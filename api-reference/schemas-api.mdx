@@ -1,0 +1,472 @@
+---
+title: 'Schemas API'
+description: 'API reference for working with DaoSign schemas'
+---
+
+# Schemas API
+
+This reference documents the smart contract functions and parameters for working with schemas in the DaoSign protocol.
+
+## Schema Creation
+
+### `store_schema`
+
+Creates a new schema in the DaoSign protocol.
+
+```solidity
+function store_schema(Schema memory input_schema) external
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input_schema` | `Schema` | The schema object to be created |
+
+#### Schema Object Structure
+
+```solidity
+struct Schema {
+    uint256 schema_id;          // Will be assigned by the contract (can be left as 0)
+    SchemaMetadata metadata;    // General schema information
+    SignatoryPolicy[] signatory_policy; // Rules for signatories
+    SchemaDefinition[] schema_definition; // Field definitions
+    bytes signature;            // Creator's signature
+}
+```
+
+#### SchemaMetadata Structure
+
+```solidity
+struct SchemaMetadata {
+    string name;                // Name of the schema
+    string description;         // Description of the schema
+    string attestation_type;    // Type (e.g., "agreement", "identity")
+    string nft_name;            // Name for NFT collection if enabled
+    string nft_symbol;          // Symbol for NFT collection if enabled
+    address creator;            // Address of schema creator (must be msg.sender)
+    uint32 created_at;          // Will be set by the contract (can be left as 0)
+    bool is_nft;                // Whether attestations can be tokenized as NFTs
+    bool is_public;             // Whether anyone can create attestations from this schema
+    bool is_revokable;          // Whether attestations can be revoked
+    uint32 expire_in;           // Seconds until schema expires (0 = never)
+}
+```
+
+#### SignatoryPolicy Structure
+
+```solidity
+struct SignatoryPolicy {
+    bytes1 operator;            // Logical operator (AND=0x01, OR=0x02, NOT=0x03)
+    string signatory_description; // Description of the policy
+    uint256[] required_schema_id; // IDs of schemas required for signatories
+}
+```
+
+#### SchemaDefinition Structure
+
+```solidity
+struct SchemaDefinition {
+    string definition_type;     // Data type of the field
+    string definition_name;     // Name of the field
+}
+```
+
+#### Supported Definition Types
+
+| Type | Description |
+|------|-------------|
+| `string` | Text data |
+| `boolean` | True/false values |
+| `uint256` | Unsigned integers |
+| `bytes` | Raw binary data |
+| `bytes32` | Fixed-length binary data |
+| `address` | Ethereum addresses |
+
+#### Returns
+
+This function emits a `SchemaCreated` event with the new schema ID.
+
+#### Example
+
+```javascript
+// Using web3.js
+const schemaMetadata = {
+  name: "Employment Agreement",
+  description: "Standard employment contract",
+  attestation_type: "agreement",
+  nft_name: "Employment NFT",
+  nft_symbol: "EMP",
+  creator: userAddress,
+  created_at: 0, // Will be set by the contract
+  is_nft: true,
+  is_public: true,
+  is_revokable: true,
+  expire_in: 0 // Never expires
+};
+
+const schemaDefinition = [
+  { definition_type: "string", definition_name: "Employer Name" },
+  { definition_type: "string", definition_name: "Employee Name" },
+  { definition_type: "string", definition_name: "Position" },
+  { definition_type: "uint256", definition_name: "Start Date" },
+  { definition_type: "uint256", definition_name: "Salary" }
+];
+
+// No special requirements for signatories
+const signatoryPolicy = [];
+
+const schema = {
+  schema_id: 0, // Will be assigned by the contract
+  metadata: schemaMetadata,
+  schema_definition: schemaDefinition,
+  signatory_policy: signatoryPolicy,
+  signature: "0x..." // Generated signature
+};
+
+// Create the schema
+const tx = await daoSignContract.methods.store_schema(schema).send({ from: userAddress });
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `UnauthorizedSchemaCreator` | The sender is not the creator specified in the schema metadata |
+| `EmptySchemaDefinition` | The schema definition array is empty |
+| `InvalidSignature` | The provided signature is invalid |
+
+## Schema Queries
+
+### `validate_and_get_schema`
+
+Retrieves a schema by ID.
+
+```solidity
+function validate_and_get_schema(uint256 id) external view returns (InternalSchema memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | `uint256` | The ID of the schema to retrieve |
+
+#### Returns
+
+Returns an `InternalSchema` object containing the schema data.
+
+#### InternalSchema Structure
+
+```solidity
+struct InternalSchema {
+    uint256 schema_id;
+    SchemaMetadata metadata;
+    bytes[] signatory_policy;    // Encoded signatory policies
+    bytes[] schema_definition;   // Encoded schema definitions
+    bytes signature;
+}
+```
+
+The internal representation uses encoded bytes arrays for storage efficiency. Your client application will need to decode these fields for user-friendly display.
+
+#### Example
+
+```javascript
+// Using web3.js
+const schemaId = 42;
+const schema = await daoSignContract.methods.validate_and_get_schema(schemaId).call();
+
+console.log(`Schema ID: ${schema.schema_id}`);
+console.log(`Name: ${schema.metadata.name}`);
+console.log(`Creator: ${schema.metadata.creator}`);
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `SchemaDoesNotExist` | No schema exists with the provided ID |
+
+### `schema_id`
+
+Returns the current schema counter.
+
+```solidity
+function schema_id() external view returns (uint256)
+```
+
+#### Returns
+
+Returns a `uint256` representing the next schema ID that will be assigned.
+
+#### Example
+
+```javascript
+// Using web3.js
+const nextSchemaId = await daoSignContract.methods.schema_id().call();
+console.log(`Next schema ID will be: ${nextSchemaId}`);
+```
+
+### `collection_by_schema`
+
+Returns the NFT collection address for a schema.
+
+```solidity
+function collection_by_schema(uint256 schemaId) external view returns (address)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `schemaId` | `uint256` | The ID of the schema |
+
+#### Returns
+
+Returns an `address` representing the NFT collection contract for the schema, or the zero address if no collection exists.
+
+#### Example
+
+```javascript
+// Using web3.js
+const schemaId = 42;
+const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+
+if (collectionAddress === '0x0000000000000000000000000000000000000000') {
+  console.log('No NFT collection for this schema');
+} else {
+  console.log(`NFT collection address: ${collectionAddress}`);
+}
+```
+
+## Helper Functions
+
+These helper functions are useful when working with schemas:
+
+### Client-side Schema Validation
+
+```javascript
+function validateSchema(schema) {
+  const errors = [];
+
+  // Validate metadata
+  if (!schema.metadata.name) errors.push('Schema name is required');
+  if (!schema.metadata.creator) errors.push('Schema creator is required');
+  
+  // Validate schema definition
+  if (!schema.schema_definition || schema.schema_definition.length === 0) {
+    errors.push('Schema definition cannot be empty');
+  } else {
+    // Check each field definition
+    schema.schema_definition.forEach((field, index) => {
+      if (!field.definition_name) {
+        errors.push(`Field #${index + 1} is missing a name`);
+      }
+      
+      // Validate data type
+      const validTypes = ['string', 'boolean', 'uint256', 'bytes', 'bytes32', 'address'];
+      if (!validTypes.includes(field.definition_type)) {
+        errors.push(`Field "${field.definition_name}" has invalid type: ${field.definition_type}`);
+      }
+    });
+    
+    // Check for duplicate field names
+    const fieldNames = schema.schema_definition.map(field => field.definition_name);
+    const duplicates = fieldNames.filter((name, index) => fieldNames.indexOf(name) !== index);
+    if (duplicates.length > 0) {
+      errors.push(`Duplicate field names: ${duplicates.join(', ')}`);
+    }
+  }
+  
+  // Validate signatory policy
+  if (schema.signatory_policy) {
+    schema.signatory_policy.forEach((policy, index) => {
+      const validOperators = ['0x01', '0x02', '0x03']; // AND, OR, NOT
+      if (!validOperators.includes(policy.operator)) {
+        errors.push(`Policy #${index + 1} has invalid operator: ${policy.operator}`);
+      }
+    });
+  }
+  
+  return { isValid: errors.length === 0, errors };
+}
+```
+
+### Schema Signature Generation
+
+```javascript
+// Using ethers.js
+async function generateSchemaSignature(schema, signer) {
+  // Create a hash of the schema
+  const schemaHash = ethers.utils.keccak256(
+    ethers.utils.defaultAbiCoder.encode(
+      ['uint256', 'string', 'string', 'string', 'address', 'bool', 'bool', 'bool', 'uint32'],
+      [
+        schema.schema_id || 0,
+        schema.metadata.name,
+        schema.metadata.description,
+        schema.metadata.attestation_type,
+        schema.metadata.creator,
+        schema.metadata.is_nft,
+        schema.metadata.is_public,
+        schema.metadata.is_revokable,
+        schema.metadata.expire_in || 0
+      ]
+    )
+  );
+  
+  // Sign the hash
+  const messageHashBytes = ethers.utils.arrayify(schemaHash);
+  const signature = await signer.signMessage(messageHashBytes);
+  
+  return signature;
+}
+```
+
+### Decoding Schema Definition
+
+```javascript
+// Decoding schema definition from the internal representation
+function decodeSchemaDefinition(encodedDefinitions) {
+  // This is a simplified example - actual implementation depends on your encoding format
+  return encodedDefinitions.map(encodedDef => {
+    const decoded = someDecodingFunction(encodedDef);
+    return {
+      definition_type: decoded.type,
+      definition_name: decoded.name
+    };
+  });
+}
+```
+
+## Best Practices
+
+When working with schemas:
+
+1. **Naming Conventions**: Use clear, descriptive names for schemas and fields
+2. **Field Organization**: Organize fields in a logical order (e.g., group related fields)
+3. **Data Types**: Choose appropriate data types for each field
+4. **Validation**: Validate schema structure before submitting to the blockchain
+5. **Documentation**: Document schema structure for users and developers
+6. **Versioning**: Create new schema versions rather than modifying existing ones
+7. **Reuse**: Build a library of reusable schema templates for common document types
+8. **Privacy**: Be cautious about including sensitive information in schemas
+9. **Expiration**: Set appropriate expiration periods based on the document type
+10. **NFT Integration**: Only enable NFT functionality when it provides value
+
+## Common Schema Templates
+
+Here are some common schema templates for reference:
+
+### Non-Disclosure Agreement (NDA)
+
+```javascript
+const ndaSchema = {
+  metadata: {
+    name: "Non-Disclosure Agreement",
+    description: "Confidentiality agreement between parties",
+    attestation_type: "agreement",
+    is_public: true,
+    is_revokable: true,
+    expire_in: 63072000, // 2 years
+    is_nft: true,
+    nft_name: "NDA",
+    nft_symbol: "NDA"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Disclosing Party" },
+    { definition_type: "string", definition_name: "Receiving Party" },
+    { definition_type: "string", definition_name: "Purpose of Disclosure" },
+    { definition_type: "string", definition_name: "Definition of Confidential Information" },
+    { definition_type: "uint256", definition_name: "Effective Date" },
+    { definition_type: "uint256", definition_name: "Term (months)" }
+  ],
+  signatory_policy: []
+};
+```
+
+### Employment Agreement
+
+```javascript
+const employmentSchema = {
+  metadata: {
+    name: "Employment Agreement",
+    description: "Standard employment contract",
+    attestation_type: "agreement",
+    is_public: true,
+    is_revokable: true,
+    expire_in: 0, // No expiration
+    is_nft: true,
+    nft_name: "Employment Contract",
+    nft_symbol: "EMP"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Employer Name" },
+    { definition_type: "string", definition_name: "Employee Name" },
+    { definition_type: "string", definition_name: "Position" },
+    { definition_type: "string", definition_name: "Responsibilities" },
+    { definition_type: "uint256", definition_name: "Start Date" },
+    { definition_type: "uint256", definition_name: "Salary" },
+    { definition_type: "string", definition_name: "Payment Frequency" },
+    { definition_type: "string", definition_name: "Work Hours" },
+    { definition_type: "string", definition_name: "Termination Conditions" }
+  ],
+  signatory_policy: []
+};
+```
+
+### Identity Verification
+
+```javascript
+const identitySchema = {
+  metadata: {
+    name: "Identity Verification",
+    description: "Verification of personal identity",
+    attestation_type: "identity",
+    is_public: false,
+    is_revokable: true,
+    expire_in: 31536000, // 1 year
+    is_nft: true,
+    nft_name: "Verified Identity",
+    nft_symbol: "VID"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Full Name" },
+    { definition_type: "string", definition_name: "Date of Birth" },
+    { definition_type: "string", definition_name: "Nationality" },
+    { definition_type: "string", definition_name: "Identification Number" },
+    { definition_type: "string", definition_name: "Verification Method" },
+    { definition_type: "uint256", definition_name: "Verification Date" }
+  ],
+  signatory_policy: []
+};
+```
+
+### Certificate of Completion
+
+```javascript
+const certificateSchema = {
+  metadata: {
+    name: "Certificate of Completion",
+    description: "Certificate for completing a course or program",
+    attestation_type: "certification",
+    is_public: true,
+    is_revokable: true,
+    expire_in: 0, // No expiration
+    is_nft: true,
+    nft_name: "Completion Certificate",
+    nft_symbol: "CERT"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Recipient Name" },
+    { definition_type: "string", definition_name: "Course Name" },
+    { definition_type: "string", definition_name: "Institution" },
+    { definition_type: "string", definition_name: "Instructor" },
+    { definition_type: "uint256", definition_name: "Completion Date" },
+    { definition_type: "string", definition_name: "Grade/Result" },
+    { definition_type: "string", definition_name: "Certification ID" }
+  ],
+  signatory_policy: []
+};
+```

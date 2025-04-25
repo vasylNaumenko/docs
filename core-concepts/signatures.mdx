@@ -1,0 +1,146 @@
+---
+title: 'Signatures'
+description: 'Cryptographic proofs of approval'
+---
+
+# Signatures and Proofs
+
+DaoSign uses cryptographic signatures to establish authenticity and consent for documents. Signatures serve as tamper-proof evidence that a specific entity has approved a document.
+
+## Understanding Cryptographic Signatures
+
+In DaoSign, signatures are not mere images of handwritten signatures, but cryptographic proofs created using blockchain wallets. They provide:
+
+- **Authentication**: Proof of the signer's identity (wallet address)
+- **Integrity**: Proof that the document has not been altered since signing
+- **Non-repudiation**: The signer cannot later deny having signed the document
+
+## Types of Proofs in DaoSign
+
+DaoSign uses two types of proofs:
+
+1. **Proof of Signature (PoS)**: Evidence that a single party has signed an attestation
+2. **Proof of Agreement (PoA)**: Collection of all required signatures for an attestation
+
+## Proof of Signature (PoS)
+
+When a signatory signs an attestation, they create a Proof of Signature:
+
+```typescript
+interface ProofOfSignature {
+  attestation_id: uint256;      // Reference to the attestation
+  creator: address;             // Signatory's address
+  created_at: uint32;           // Timestamp of signing
+  signature: bytes;             // Cryptographic signature
+}
+```
+
+The signature is created by:
+1. Hashing the attestation data
+2. Signing the hash with the signatory's private key
+
+This creates a unique signature that:
+- Is tied to the specific attestation
+- Can only have been created by the owner of that private key
+- Would be invalidated by any change to the document
+
+## Proof of Agreement (PoA)
+
+When all required signatures for an attestation are collected, a Proof of Agreement is formed:
+
+```typescript
+interface ProofOfAgreement {
+  attestation_id: uint256;      // Reference to the attestation
+  signatures: bytes[];          // Collection of all signatures
+}
+```
+
+A Proof of Agreement represents the complete set of approvals required by the attestation's signatories list.
+
+## Signature Verification
+
+Signatures in DaoSign can be verified at any time by:
+
+1. Retrieving the attestation data
+2. Computing the expected hash
+3. Verifying that the signature was created from that hash using the claimed signer's public key
+
+This verification can be performed by anyone with access to the blockchain data, ensuring transparency and auditability.
+
+## Signature Process
+
+The signature process in DaoSign works as follows:
+
+1. **Attestation Creation**: 
+   - The creator generates an attestation
+   - The creator signs the attestation with their private key
+   - The attestation is stored on the blockchain
+
+2. **Signature Collection**:
+   - Each required signatory reviews the attestation
+   - Each signatory signs using their private key
+   - Each signature (PoS) is stored on the blockchain
+
+3. **Agreement Formation**:
+   - When all required signatures are collected
+   - The system automatically creates a Proof of Agreement
+   - If configured, an NFT representing the agreement may be minted
+
+## Signing an Attestation
+
+To sign an attestation:
+
+```javascript
+// Connect with the signatory's wallet
+await daoSign.connect(signatoryWallet);
+
+// Sign the attestation
+await daoSign.signAttestation(attestationId);
+```
+
+## Checking Signature Status
+
+You can check the status of signatures for an attestation:
+
+```javascript
+// Get all proofs of signature for an attestation
+const signatures = await daoSign.getProofsOfSignature(attestationId);
+
+// Check if a specific address has signed
+const hasSigned = signatures.some(sig => sig.creator === address);
+
+// Check if all required signatories have signed
+const attestation = await daoSign.getAttestation(attestationId);
+const allSigned = attestation.signatories.length === signatures.length;
+
+// Get the proof of agreement (if complete)
+const agreements = await daoSign.getProofsOfAgreement(attestationId);
+const isComplete = agreements.length > 0;
+```
+
+## Signature Policy Requirements
+
+DaoSign allows schemas to define signatory policies that must be satisfied before a party can sign an attestation. These policies can require signatories to have previous attestations from specific schemas.
+
+For example, a policy might require:
+- AND: The signatory must have attestations from schemas A, B, and C
+- OR: The signatory must have an attestation from at least one of schemas X, Y, or Z
+- NOT: The signatory must not have attestations from schema P
+
+```javascript
+// Example of signatory policy requiring employment verification
+const signatoryPolicy = {
+  operator: "0x01", // AND
+  signatory_description: "Must be a verified employee",
+  required_schema_id: [42] // Schema ID for "Employment Verification"
+};
+```
+
+## Signature Security Best Practices
+
+- **Private key security**: Never share private keys or seed phrases
+- **Review before signing**: Always review attestation content before signing
+- **Use hardware wallets**: Consider using hardware wallets for enhanced security
+- **Consider multi-sig**: For high-value documents, consider multi-signature wallets
+- **Verify counter-parties**: Confirm the identity of other signatories before signing
+- **Check schema details**: Verify the schema properties including revocation policy

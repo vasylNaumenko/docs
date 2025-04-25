@@ -1,0 +1,307 @@
+---
+title: 'Frequently Asked Questions'
+description: 'Common questions and answers about DaoSign'
+---
+
+# Frequently Asked Questions
+
+This document addresses common questions about DaoSign's functionality, usage, and technical details.
+
+## General Questions
+
+### What is DaoSign?
+
+DaoSign is a decentralized document signing and verification platform built on the Ethereum blockchain. It allows for the creation of document templates (schemas), document instances (attestations), and collection of cryptographic signatures with verification.
+
+### How is DaoSign different from traditional e-signature solutions?
+
+Unlike traditional e-signature solutions that rely on centralized databases and trust in a single provider, DaoSign:
+
+- Stores documents and signatures on the blockchain for immutability and transparency
+- Uses cryptographic signatures that are mathematically verifiable
+- Allows for complex signing policies based on on-chain credentials
+- Provides tokenized representation of agreements as NFTs
+- Operates in a decentralized manner without relying on a single company
+
+### Is DaoSign legally binding?
+
+While DaoSign provides strong cryptographic proof of document authenticity and signatures, the legal validity depends on your jurisdiction. In many jurisdictions, electronic signatures are legally binding, and DaoSign's cryptographic signatures often exceed the technical requirements. However, we recommend consulting legal counsel for specific use cases, especially for high-value agreements.
+
+### What types of documents can I create with DaoSign?
+
+DaoSign is flexible and can support virtually any document type, including:
+- Legal agreements (NDAs, service agreements, employment contracts)
+- Certificates and credentials
+- Governance proposals
+- Identity attestations
+- Business documents (invoices, purchase orders)
+- Consent forms
+- And many more
+
+## Technical Questions
+
+### What blockchain networks does DaoSign support?
+
+DaoSign is deployed on Ethereum and compatible EVM (Ethereum Virtual Machine) networks. This includes networks like:
+- Ethereum Mainnet
+- Ethereum Goerli (testnet)
+- Polygon
+- Optimism
+- Arbitrum
+- Base
+- Other EVM-compatible chains
+
+### How are documents stored on the blockchain?
+
+DaoSign stores document structure and metadata on the blockchain, not the entire document content. Specifically:
+- Schemas define the document structure and fields
+- Attestations contain the actual data values for each field
+- Signatures and proofs are stored as cryptographic hashes
+
+For large documents or sensitive content, we recommend storing a hash of the full document on-chain while keeping the complete document off-chain in a secure storage solution.
+
+### Are DaoSign documents public?
+
+By default, all data stored on the blockchain is publicly visible. However, DaoSign offers several privacy options:
+- Schemas can be marked as private (only the creator can create attestations)
+- Sensitive data can be hashed or encrypted before being included in attestations
+- References to off-chain storage can be used for confidential information
+
+### How secure are the signatures?
+
+DaoSign uses Ethereum's cryptographic signature system, which is based on elliptic curve cryptography (ECDSA). This is the same secure signature scheme used for authenticating blockchain transactions worth billions of dollars. The signatures are mathematically verifiable and cannot be forged without access to the signer's private key.
+
+### What happens if I lose access to my wallet?
+
+If you lose access to your Ethereum wallet (private key), you will not be able to create new signatures or revoke existing attestations created by that wallet. This is why it's critically important to:
+- Securely back up your wallet's recovery phrase or private key
+- Consider using a hardware wallet for additional security
+- For organizations, consider using multi-signature wallets
+
+## Usage Questions
+
+### How do I create a schema?
+
+To create a schema:
+1. Connect your Ethereum wallet to a DaoSign interface
+2. Define the schema metadata (name, description, options)
+3. Define fields (name and data type for each)
+4. Set any signatory policies if required
+5. Sign and submit the transaction to the blockchain
+
+See our [Creating a Schema](/tutorials/creating-schema) tutorial for detailed steps.
+
+### How do I create an attestation?
+
+To create an attestation:
+1. Select an existing schema
+2. Fill in values for all required fields
+3. Specify the recipient and required signatories
+4. Sign and submit the transaction to the blockchain
+
+See our [Creating an Attestation](/tutorials/creating-attestation) tutorial for detailed steps.
+
+### How do signatories sign a document?
+
+Signatories can sign a document by:
+1. Connecting their Ethereum wallet
+2. Reviewing the attestation details
+3. Generating a cryptographic signature
+4. Submitting the signature to the blockchain
+
+The DaoSign interface facilitates this process. See our [Signing an Attestation](/tutorials/signing-attestation) tutorial for detailed steps.
+
+### Can I revoke a document after it's been signed?
+
+Yes, attestations can be revoked by the creator if the schema has the `is_revokable` option set to `true`. Revocation adds a timestamp and signature to the attestation's record and marks it as invalid. However, the historical record of the attestation and its signatures remains visible on the blockchain for transparency.
+
+### What are signatory policies and how do I use them?
+
+Signatory policies define requirements that signatories must meet before they can sign a document. For example, you can require that signatories have specific credentials or attestations. These policies use logical operators (AND, OR, NOT) to combine requirements.
+
+Example: Requiring signatories to have a verified KYC attestation before they can sign a legal agreement.
+
+See our [Core Concepts: Signatures](/core-concepts/signatures#signature-policy-requirements) section for more details.
+
+## NFT Questions
+
+### What are DaoSign NFTs?
+
+DaoSign can optionally represent attestations as non-transferable NFT tokens (following the ERC-721 standard). These tokens:
+- Represent proof of document creation or agreement
+- Are tied to specific attestations
+- Can be viewed in standard NFT wallets and marketplaces
+- Cannot be transferred between accounts (only minted and burned)
+
+### Why are DaoSign NFTs non-transferable?
+
+DaoSign NFTs represent specific attestations or agreements tied to particular addresses. Allowing transfers would break the connection between the document and its relevant parties. The non-transferable design ensures:
+- Document authenticity is maintained
+- The record of who agreed to what remains intact
+- Attestations remain with their intended recipients
+
+### How are NFTs created for attestations?
+
+NFTs are automatically created in two scenarios:
+1. When an attestation is created (for schemas without required signatories)
+2. When all required signatures are collected (for multi-signature attestations)
+
+The NFT creation is handled by the DaoSign contract, which deploys a separate NFT collection for each schema with NFTs enabled.
+
+### How can I see my DaoSign NFTs?
+
+DaoSign NFTs are standard ERC-721 tokens that can be viewed in:
+- Most Ethereum wallet applications (MetaMask, Trust Wallet, etc.)
+- NFT marketplaces and browsers (though they cannot be sold or transferred)
+- DaoSign's own interface, which shows documents associated with the tokens
+
+## Integration Questions
+
+### Can I integrate DaoSign with my existing systems?
+
+Yes, DaoSign provides several integration options:
+- Direct smart contract interaction for blockchain-native applications
+- JavaScript libraries for web applications
+- API integrations for traditional systems
+- Event monitoring for reactive applications
+
+See our [Web3 Integration](/technical/integration/web3-integration) and [Blockchain Events](/technical/integration/blockchain-events) documentation for details.
+
+### How can I build a custom UI for DaoSign?
+
+You can build a custom UI by:
+1. Using our JavaScript libraries to interact with the smart contracts
+2. Creating your own form elements for schema and attestation creation
+3. Implementing signature generation and submission
+4. Listening for contract events to update your UI
+
+Our [Developer Guide](/development) provides resources and examples for building custom interfaces.
+
+### How do I handle gas fees in my application?
+
+There are several approaches to handling gas fees:
+1. **User-paid**: Users pay gas fees directly with their wallet
+2. **Sponsoring**: Your application can sponsor gas fees using meta-transactions
+3. **Gas station networks**: Use services like GSN or EIP-1613
+4. **Layer 2**: Deploy on Ethereum Layer 2 solutions with lower fees
+
+For production applications, consider implementing a combination of these approaches based on your users' familiarity with blockchain.
+
+## Advanced Questions
+
+### Can I implement custom logic for document workflows?
+
+Yes, you can implement custom logic in several ways:
+1. Using signatory policies to control who can sign
+2. Building middleware that interacts with the DaoSign contracts
+3. Developing smart contracts that integrate with DaoSign
+4. Creating off-chain workflows that use DaoSign for specific steps
+
+### How do I handle document versioning?
+
+DaoSign doesn't have a built-in versioning system, but you can implement versioning by:
+1. Creating new schemas for major document revisions
+2. Using a version field in your attestation data
+3. Creating new attestations for updated versions
+4. Revoking old attestations when they're replaced
+
+### How does DaoSign handle schema updates?
+
+Schemas are immutable once created. To update a schema:
+1. Create a new schema with the desired changes
+2. Use a consistent naming convention (e.g., "NDA v2")
+3. Begin using the new schema for new attestations
+4. Optionally revoke attestations from the old schema if needed
+
+### Are there size limitations for documents?
+
+Blockchain storage is expensive, so DaoSign is designed for relatively compact data. Best practices include:
+1. Keep field values concise
+2. Store large documents off-chain and include only a hash in the attestation
+3. Use references to external storage systems (IPFS, Arweave, traditional storage)
+4. Split very complex documents into multiple related schemas
+
+### How does DaoSign handle multiple signatures for a document?
+
+DaoSign has a built-in multi-signature system:
+1. The attestation creator defines a list of required signatories
+2. Each signatory creates a Proof of Signature (PoS)
+3. When all signatures are collected, a Proof of Agreement (PoA) is automatically created
+4. If NFT is enabled, a token is minted to represent the complete agreement
+
+## Troubleshooting
+
+### My transaction failed with "gas estimation failed"
+
+This often occurs when the transaction would revert. Common causes include:
+- Invalid signature format
+- Missing or incorrect data fields
+- Attempting to sign an attestation you're not authorized to sign
+- Attempting to revoke a non-revocable attestation
+
+Check the specific requirements and try again with correct parameters.
+
+### I can't see an attestation I created
+
+If you've created an attestation but can't see it:
+1. Verify the transaction was confirmed on the blockchain
+2. Make sure you're connected with the same wallet that created it
+3. Check if you're looking at the correct network (e.g., mainnet vs. testnet)
+4. Try refreshing the data or reconnecting your wallet
+
+### A signatory can't sign my attestation
+
+If a signatory is unable to sign:
+1. Verify they are listed in the attestation's signatories array
+2. Check if they meet any signatory policy requirements
+3. Ensure they haven't already signed (each signatory can sign only once)
+4. Verify they're using the correct wallet address
+5. Make sure the attestation hasn't been revoked
+
+### The NFT for my attestation wasn't created
+
+If an NFT wasn't created for your attestation:
+1. Verify the schema has `is_nft` set to `true`
+2. For multi-signature attestations, check if all required signatures have been collected
+3. Verify the transaction that should have minted the NFT was successful
+4. Check if the NFT might have been created but isn't visible in your wallet
+
+## Getting Help
+
+### Where can I get support?
+
+If you need help with DaoSign:
+1. Check this documentation for guides and reference material
+2. Visit our community forum for discussions and common questions
+3. Join our Discord server for community support
+4. Open an issue on GitHub for technical problems
+5. Contact our support team for critical issues
+
+### How can I report a bug or security issue?
+
+For bugs and non-critical issues:
+- Open an issue on our GitHub repository
+
+For security vulnerabilities:
+- Do not disclose publicly
+- Email security@daosign.io with details
+- Consider using our bug bounty program if available
+
+### Where can I request new features?
+
+We welcome feature requests through:
+- GitHub issues with the "enhancement" tag
+- Our product roadmap voting system
+- Direct feedback to our team
+- Community discussion forums
+
+### How can I contribute to DaoSign?
+
+We welcome contributions from the community:
+1. Code contributions through GitHub pull requests
+2. Documentation improvements
+3. Bug reports and testing
+4. Spreading the word and helping other users
+5. Building integrations and tools on top of DaoSign
+
+See our [Contribution Guidelines](https://github.com/yourusername/daosign/blob/main/CONTRIBUTING.md) for more details.

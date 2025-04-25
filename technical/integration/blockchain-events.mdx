@@ -1,0 +1,548 @@
+---
+title: 'Blockchain Events'
+description: 'Using DaoSign events for application integrations'
+---
+
+# Blockchain Events
+
+DaoSign emits various blockchain events that applications can listen for to track the state of schemas, attestations, signatures, and agreements. This guide explains how to work with these events in your applications.
+
+## Event Overview
+
+DaoSign emits the following key events:
+
+| Event Name | Description | Parameters |
+|------------|-------------|------------|
+| `SchemaCreated` | Emitted when a new schema is created | `schemaID` (uint256) |
+| `AttestationCreated` | Emitted when a new attestation is created | `attestationID` (uint256) |
+| `ProofOfSignatureCreated` | Emitted when an attestation is signed | `attestationID` (uint256) |
+| `ProofOfAgreementCreated` | Emitted when all required signatures are collected | `attestationID` (uint256) |
+| `Revoked` | Emitted when an attestation is revoked | `attestationID` (uint256) |
+| `ContractUpgraded` | Emitted when the contract is upgraded (DaoSignV2 only) | `newVersion` (string), `timestamp` (uint256) |
+
+## Why Use Events?
+
+Blockchain events provide several advantages:
+
+1. **Efficiency**: Listening for events is more efficient than polling the blockchain
+2. **Historical Data**: Events provide a historical record of all actions
+3. **Real-time Updates**: Events enable real-time notifications for state changes
+4. **Decoupling**: Events allow loose coupling between the blockchain and your application
+5. **Indexing**: Events can be indexed to build efficient databases of DaoSign activity
+
+## Event Structure
+
+Each event consists of:
+
+- **Event Signature**: A hash of the event name and parameter types
+- **Indexed Parameters**: Parameters that can be efficiently filtered
+- **Non-indexed Parameters**: Additional event data
+
+For example, the `SchemaCreated` event has the signature `SchemaCreated(uint256)` and contains one indexed parameter (`schemaID`).
+
+## Listening for Events
+
+### Using ethers.js
+
+```javascript
+import { ethers } from 'ethers';
+import { DaoSignABI } from './abis';
+
+// Initialize contract
+const provider = new ethers.providers.Web3Provider(window.ethereum);
+const daoSign = new ethers.Contract(
+  DAOSIGN_ADDRESS,
+  DaoSignABI,
+  provider
+);
+
+// Listen for schema creation
+daoSign.on('SchemaCreated', (schemaId, event) => {
+  console.log(`New schema created with ID: ${schemaId.toString()}`);
+  console.log('Event data:', event);
+});
+
+// Listen for attestation creation
+daoSign.on('AttestationCreated', (attestationId, event) => {
+  console.log(`New attestation created with ID: ${attestationId.toString()}`);
+  console.log('Event data:', event);
+});
+
+// Listen for signatures
+daoSign.on('ProofOfSignatureCreated', (attestationId, event) => {
+  console.log(`New signature added to attestation ID: ${attestationId.toString()}`);
+  console.log('Event data:', event);
+});
+
+// Listen for agreements
+daoSign.on('ProofOfAgreementCreated', (attestationId, event) => {
+  console.log(`Agreement completed for attestation ID: ${attestationId.toString()}`);
+  console.log('Event data:', event);
+});
+
+// Listen for revocations
+daoSign.on('Revoked', (attestationId, event) => {
+  console.log(`Attestation revoked with ID: ${attestationId.toString()}`);
+  console.log('Event data:', event);
+});
+```
+
+### Using web3.js
+
+```javascript
+import Web3 from 'web3';
+import { DaoSignABI } from './abis';
+
+// Initialize Web3 and contract
+const web3 = new Web3(window.ethereum);
+const daoSign = new web3.eth.Contract(
+  DaoSignABI,
+  DAOSIGN_ADDRESS
+);
+
+// Listen for schema creation
+daoSign.events.SchemaCreated({})
+  .on('data', (event) => {
+    const schemaId = event.returnValues.schemaID;
+    console.log(`New schema created with ID: ${schemaId}`);
+  })
+  .on('error', console.error);
+
+// Listen for attestation creation
+daoSign.events.AttestationCreated({})
+  .on('data', (event) => {
+    const attestationId = event.returnValues.attestationID;
+    console.log(`New attestation created with ID: ${attestationId}`);
+  })
+  .on('error', console.error);
+
+// Listen for signatures
+daoSign.events.ProofOfSignatureCreated({})
+  .on('data', (event) => {
+    const attestationId = event.returnValues.attestationID;
+    console.log(`New signature added to attestation ID: ${attestationId}`);
+  })
+  .on('error', console.error);
+
+// Listen for agreements
+daoSign.events.ProofOfAgreementCreated({})
+  .on('data', (event) => {
+    const attestationId = event.returnValues.attestationID;
+    console.log(`Agreement completed for attestation ID: ${attestationId}`);
+  })
+  .on('error', console.error);
+
+// Listen for revocations
+daoSign.events.Revoked({})
+  .on('data', (event) => {
+    const attestationId = event.returnValues.attestationID;
+    console.log(`Attestation revoked with ID: ${attestationId}`);
+  })
+  .on('error', console.error);
+```
+
+## Filtering Events
+
+You can filter events to focus on specific criteria:
+
+### Filter by Specific Attestation ID
+
+```javascript
+// Using ethers.js
+const filter = daoSign.filters.ProofOfSignatureCreated(attestationId);
+daoSign.on(filter, (attestationId, event) => {
+  console.log(`New signature for attestation ${attestationId}`);
+});
+
+// Using web3.js
+daoSign.events.ProofOfSignatureCreated({
+  filter: { attestationID: attestationId }
+})
+  .on('data', (event) => {
+    console.log(`New signature for attestation ${event.returnValues.attestationID}`);
+  });
+```
+
+### Filter by Block Range
+
+```javascript
+// Using ethers.js
+const startBlock = 12345678;
+const endBlock = 12345778;
+
+provider.getLogs({
+  address: DAOSIGN_ADDRESS,
+  topics: [ethers.utils.id("SchemaCreated(uint256)")],
+  fromBlock: startBlock,
+  toBlock: endBlock
+}).then(logs => {
+  console.log(`Found ${logs.length} schema creation events`);
+  logs.forEach(log => {
+    const parsedLog = daoSign.interface.parseLog(log);
+    console.log(`Schema ID: ${parsedLog.args.schemaID.toString()}`);
+  });
+});
+
+// Using web3.js
+daoSign.getPastEvents('SchemaCreated', {
+  fromBlock: startBlock,
+  toBlock: endBlock
+}).then(events => {
+  console.log(`Found ${events.length} schema creation events`);
+  events.forEach(event => {
+    console.log(`Schema ID: ${event.returnValues.schemaID}`);
+  });
+});
+```
+
+## Querying Historical Events
+
+To query events from the past:
+
+```javascript
+// Using ethers.js
+async function getSchemaHistory() {
+  // Query all schema creation events
+  const filter = daoSign.filters.SchemaCreated();
+  const events = await daoSign.queryFilter(filter, 0, 'latest');
+  
+  console.log(`Found ${events.length} total schemas`);
+  
+  // Process each event
+  for (const event of events) {
+    const schemaId = event.args.schemaID.toString();
+    const blockNumber = event.blockNumber;
+    const txHash = event.transactionHash;
+    
+    console.log(`Schema ${schemaId} created in block ${blockNumber} (tx: ${txHash})`);
+    
+    // Optionally get more details about the schema
+    const schema = await daoSign.validate_and_get_schema(schemaId);
+    console.log(`Schema name: ${schema.metadata.name}`);
+  }
+}
+
+// Using web3.js
+async function getSchemaHistory() {
+  // Query all schema creation events
+  const events = await daoSign.getPastEvents('SchemaCreated', {
+    fromBlock: 0,
+    toBlock: 'latest'
+  });
+  
+  console.log(`Found ${events.length} total schemas`);
+  
+  // Process each event
+  for (const event of events) {
+    const schemaId = event.returnValues.schemaID;
+    const blockNumber = event.blockNumber;
+    const txHash = event.transactionHash;
+    
+    console.log(`Schema ${schemaId} created in block ${blockNumber} (tx: ${txHash})`);
+    
+    // Optionally get more details about the schema
+    const schema = await daoSign.methods.validate_and_get_schema(schemaId).call();
+    console.log(`Schema name: ${schema.metadata.name}`);
+  }
+}
+```
+
+## Using Events for User Notifications
+
+Events can be used to notify users about state changes:
+
+```javascript
+// React component example
+import React, { useEffect, useState } from 'react';
+import { ethers } from 'ethers';
+import { DaoSignABI } from './abis';
+
+function NotificationCenter({ daoSignAddress, userAddress }) {
+  const [notifications, setNotifications] = useState([]);
+  
+  useEffect(() => {
+    if (!daoSignAddress || !userAddress) return;
+    
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const daoSign = new ethers.Contract(
+      daoSignAddress,
+      DaoSignABI,
+      provider
+    );
+    
+    // Notification for when a user's attestation receives a signature
+    async function setupSignatureListener() {
+      // First, get all user's attestations
+      const schemaIds = [1, 2, 3]; // Replace with actual schema IDs of interest
+      const userAttestations = [];
+      
+      for (const schemaId of schemaIds) {
+        try {
+          const attestations = await daoSign.get_user_attestations(schemaId, userAddress);
+          userAttestations.push(...attestations.map(a => a.attestation_id.toString()));
+        } catch (error) {
+          console.error(`Error fetching attestations for schema ${schemaId}:`, error);
+        }
+      }
+      
+      // Now listen for signatures on those attestations
+      daoSign.on('ProofOfSignatureCreated', async (attestationId, event) => {
+        const attestationIdStr = attestationId.toString();
+        
+        // Check if this signature is for one of the user's attestations
+        if (userAttestations.includes(attestationIdStr)) {
+          try {
+            // Get signature details
+            const signatures = await daoSign.get_proof_of_signature(attestationIdStr);
+            const latestSignature = signatures[signatures.length - 1];
+            
+            // Get attestation details
+            const attestation = await daoSign.validate_and_get_attestation(attestationIdStr);
+            
+            // Add notification
+            setNotifications(prev => [
+              {
+                id: Date.now(),
+                type: 'signature',
+                message: `${latestSignature.creator} signed your attestation`,
+                attestationId: attestationIdStr,
+                timestamp: new Date().toISOString(),
+                read: false
+              },
+              ...prev
+            ]);
+          } catch (error) {
+            console.error('Error processing signature event:', error);
+          }
+        }
+      });
+    }
+    
+    setupSignatureListener();
+    
+    // Cleanup function
+    return () => {
+      provider.removeAllListeners();
+    };
+  }, [daoSignAddress, userAddress]);
+  
+  // Render notifications
+  return (
+    <div className="notification-center">
+      <h2>Notifications</h2>
+      {notifications.length === 0 ? (
+        <p>No new notifications</p>
+      ) : (
+        <ul>
+          {notifications.map(notification => (
+            <li key={notification.id} className={notification.read ? 'read' : 'unread'}>
+              <span className="timestamp">{new Date(notification.timestamp).toLocaleString()}</span>
+              <p>{notification.message}</p>
+              {notification.type === 'signature' && (
+                <button onClick={() => window.location.href = `/attestation/${notification.attestationId}`}>
+                  View Attestation
+                </button>
+              )}
+              {!notification.read && (
+                <button onClick={() => setNotifications(prev => 
+                  prev.map(n => n.id === notification.id ? {...n, read: true} : n)
+                )}>
+                  Mark as Read
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+## Indexing Events in a Database
+
+For production applications, you'll often want to index events in a database:
+
+```javascript
+import { ethers } from 'ethers';
+import { DaoSignABI } from './abis';
+import { Pool } from 'pg'; // Using PostgreSQL
+
+// Database setup
+const db = new Pool({
+  user: 'username',
+  host: 'localhost',
+  database: 'daosign_events',
+  password: 'password',
+  port: 5432,
+});
+
+async function indexDaoSignEvents() {
+  // Connect to blockchain
+  const provider = new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/YOUR_INFURA_KEY');
+  const daoSign = new ethers.Contract(
+    DAOSIGN_ADDRESS,
+    DaoSignABI,
+    provider
+  );
+  
+  // Get the latest indexed block from the database
+  const latestBlockResult = await db.query('SELECT MAX(block_number) as latest_block FROM events');
+  const startBlock = (latestBlockResult.rows[0].latest_block || 0) + 1;
+  const currentBlock = await provider.getBlockNumber();
+  
+  console.log(`Indexing events from block ${startBlock} to ${currentBlock}`);
+  
+  // Index schema creation events
+  const schemaFilter = daoSign.filters.SchemaCreated();
+  const schemaEvents = await daoSign.queryFilter(schemaFilter, startBlock, currentBlock);
+  
+  for (const event of schemaEvents) {
+    const schemaId = event.args.schemaID.toString();
+    const tx = await provider.getTransaction(event.transactionHash);
+    
+    await db.query(
+      'INSERT INTO events (event_type, block_number, transaction_hash, schema_id, timestamp) VALUES ($1, $2, $3, $4, $5)',
+      ['SchemaCreated', event.blockNumber, event.transactionHash, schemaId, new Date(tx.timestamp * 1000)]
+    );
+    
+    // Optionally store schema details
+    const schema = await daoSign.validate_and_get_schema(schemaId);
+    await db.query(
+      'INSERT INTO schemas (schema_id, name, description, creator, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [schemaId, schema.metadata.name, schema.metadata.description, schema.metadata.creator, new Date(schema.metadata.created_at * 1000)]
+    );
+  }
+  
+  // Similarly index other event types (attestations, signatures, agreements, revocations)
+  // ...
+  
+  console.log(`Indexed ${schemaEvents.length} schema events`);
+}
+
+// Run the indexer
+indexDaoSignEvents()
+  .catch(console.error);
+```
+
+## Creating a Webhook Service
+
+You can create a webhook service to notify other systems about DaoSign events:
+
+```javascript
+import { ethers } from 'ethers';
+import { DaoSignABI } from './abis';
+import express from 'express';
+import axios from 'axios';
+
+// Setup Express app
+const app = express();
+app.use(express.json());
+
+// Store webhook subscriptions
+const subscriptions = {
+  SchemaCreated: [],
+  AttestationCreated: [],
+  ProofOfSignatureCreated: [],
+  ProofOfAgreementCreated: [],
+  Revoked: []
+};
+
+// API to register webhooks
+app.post('/subscribe', (req, res) => {
+  const { eventType, url, filter } = req.body;
+  
+  if (!subscriptions[eventType]) {
+    return res.status(400).json({ error: 'Invalid event type' });
+  }
+  
+  subscriptions[eventType].push({ url, filter });
+  res.json({ success: true, message: 'Webhook registered successfully' });
+});
+
+// Start the server
+app.listen(3000, () => {
+  console.log('Webhook service listening on port 3000');
+  startEventListener();
+});
+
+// Listen for blockchain events
+function startEventListener() {
+  const provider = new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/YOUR_INFURA_KEY');
+  const daoSign = new ethers.Contract(
+    DAOSIGN_ADDRESS,
+    DaoSignABI,
+    provider
+  );
+  
+  // Schema creation
+  daoSign.on('SchemaCreated', async (schemaId, event) => {
+    const schema = await daoSign.validate_and_get_schema(schemaId);
+    
+    // Notify all subscribed webhooks
+    for (const sub of subscriptions.SchemaCreated) {
+      // Apply filters if any
+      if (sub.filter && sub.filter.creator && schema.metadata.creator !== sub.filter.creator) {
+        continue;
+      }
+      
+      // Send webhook notification
+      try {
+        await axios.post(sub.url, {
+          eventType: 'SchemaCreated',
+          schemaId: schemaId.toString(),
+          schema: {
+            name: schema.metadata.name,
+            description: schema.metadata.description,
+            creator: schema.metadata.creator
+          },
+          blockNumber: event.blockNumber,
+          transactionHash: event.transactionHash,
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.error(`Error notifying webhook ${sub.url}:`, error.message);
+      }
+    }
+  });
+  
+  // Similarly listen for other event types
+  // ...
+}
+```
+
+## Best Practices
+
+When working with DaoSign events:
+
+1. **Error Handling**: Always include error handling for event listeners
+2. **Reconnection Logic**: Implement reconnection logic in case of network disruptions
+3. **Event Deduplication**: Handle potential duplicate events in your application
+4. **Block Confirmations**: Consider waiting for multiple block confirmations for important events
+5. **Efficient Querying**: Use specific filters to reduce the amount of data processed
+6. **Pagination**: When querying historical events, use pagination to handle large result sets
+7. **Indexing**: For production applications, index events in a database for efficient querying
+8. **Throttling**: Implement throttling for webhook notifications to prevent overwhelming receivers
+9. **Security**: Validate and sanitize event data before using it in your application
+10. **Testing**: Test event handling with diverse scenarios, including edge cases
+
+## Event Processing Architecture
+
+For robust event processing, consider a multi-layer architecture:
+
+```
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐     ┌─────────────┐
+│  Ethereum Node  │────►│ Event Indexer │────►│ Event Database  │────►│ Application │
+└─────────────────┘     └──────────────┘     └─────────────────┘     └─────────────┘
+                               │                                            ▲
+                               ▼                                            │
+                        ┌──────────────┐                            ┌─────────────┐
+                        │ Event Queue  │───────────────────────────►│   Webhook   │
+                        └──────────────┘                            └─────────────┘
+```
+
+This architecture provides:
+- **Reliability**: Events are stored in a database for durability
+- **Scalability**: Components can be scaled independently
+- **Decoupling**: Services are loosely coupled for flexibility
+- **Performance**: Event processing doesn't block user interactions

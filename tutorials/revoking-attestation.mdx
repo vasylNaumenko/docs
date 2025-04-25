@@ -1,0 +1,249 @@
+---
+title: 'Revoking an Attestation'
+description: 'Step-by-step guide to revoke a document'
+---
+
+# Revoking an Attestation
+
+This tutorial explains how to revoke an attestation in DaoSign. Revocation is the process of invalidating a previously created attestation when it's no longer valid or needed.
+
+## Prerequisites
+
+- An Ethereum wallet (like MetaMask)
+- The DaoSign client library installed
+- A valid attestation ID that you created
+- The schema must have `is_revokable` set to `true`
+- Connection to an Ethereum network
+
+## Understanding Revocation
+
+Before proceeding, it's important to understand:
+
+1. **Who can revoke**: Only the original creator of an attestation can revoke it
+2. **Schema requirements**: The schema must have `is_revokable` set to `true`
+3. **Finality**: Revocation is permanent and cannot be undone
+4. **NFT impact**: If an NFT was minted for the attestation, it will be burned upon revocation
+
+## Step 1: Connect to DaoSign
+
+First, initialize the DaoSign client and connect your wallet:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+// Initialize client
+const daoSign = new DaoSignClient({
+  provider: window.ethereum,
+  network: 'goerli' // Or your preferred network
+});
+
+// Connect wallet
+await daoSign.connect();
+
+// Get current address
+const currentAddress = await daoSign.getAddress();
+console.log('Connected address:', currentAddress);
+```
+
+## Step 2: Verify Revocation Eligibility
+
+Before attempting to revoke, verify that the attestation can be revoked:
+
+```javascript
+// Attestation ID you want to revoke
+const attestationId = 42; // Replace with actual attestation ID
+
+// Get attestation details
+try {
+  const attestation = await daoSign.getAttestation(attestationId);
+  
+  // Check if attestation exists
+  if (!attestation) {
+    throw new Error('Attestation not found');
+  }
+  
+  // Check if already revoked
+  if (attestation.is_revoked) {
+    throw new Error('This attestation has already been revoked');
+  }
+  
+  // Verify you're the creator
+  if (attestation.creator.toLowerCase() !== currentAddress.toLowerCase()) {
+    throw new Error('Only the creator can revoke an attestation');
+  }
+  
+  // Get schema to check if revocation is allowed
+  const schema = await daoSign.getSchema(attestation.schema_id);
+  if (!schema.metadata.is_revokable) {
+    throw new Error('This attestation cannot be revoked (schema does not allow revocation)');
+  }
+  
+  console.log('Attestation is eligible for revocation');
+  
+  // Display attestation content for confirmation
+  console.log('Attestation content to be revoked:');
+  attestation.attestation_result.forEach(field => {
+    console.log(`${field.name}: ${field.value}`);
+  });
+  
+} catch (error) {
+  console.error('Error verifying revocation eligibility:', error);
+  // Show error to user and stop the revocation process
+  return;
+}
+```
+
+## Step 3: Revoke the Attestation
+
+After verifying eligibility, you can revoke the attestation:
+
+```javascript
+// Revoke the attestation
+try {
+  await daoSign.revokeAttestation(attestationId);
+  console.log('Attestation revoked successfully!');
+  
+  // Get updated attestation details
+  const updatedAttestation = await daoSign.getAttestation(attestationId);
+  console.log('Revocation timestamp:', new Date(updatedAttestation.revoked_at * 1000).toLocaleString());
+  
+  // Check what happened to NFT if applicable
+  const schema = await daoSign.getSchema(updatedAttestation.schema_id);
+  if (schema.metadata.is_nft) {
+    console.log('The NFT representing this attestation has been burned.');
+  }
+} catch (error) {
+  console.error('Error revoking attestation:', error);
+}
+```
+
+## Step 4: Verify Revocation Status
+
+After revocation, you can verify the status:
+
+```javascript
+// Get the attestation details after revocation
+const attestation = await daoSign.getAttestation(attestationId);
+
+// Display revocation status
+console.log('Revocation status:');
+console.log('Is revoked:', attestation.is_revoked);
+console.log('Revocation timestamp:', attestation.revoked_at > 0 
+  ? new Date(attestation.revoked_at * 1000).toLocaleString() 
+  : 'N/A');
+console.log('Revocation signature:', attestation.revoke_signature 
+  ? `Present (${attestation.revoke_signature.slice(0, 10)}...)` 
+  : 'None');
+```
+
+## Complete Example
+
+Here's a complete example for revoking an attestation:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+async function revokeAttestation(attestationId) {
+  // Initialize client
+  const daoSign = new DaoSignClient({
+    provider: window.ethereum,
+    network: 'goerli'
+  });
+  
+  // Connect wallet
+  await daoSign.connect();
+  const currentAddress = await daoSign.getAddress();
+  
+  try {
+    // 1. Verify revocation eligibility
+    console.log(`Checking eligibility to revoke attestation ${attestationId}...`);
+    
+    const attestation = await daoSign.getAttestation(attestationId);
+    
+    // Check attestation exists
+    if (!attestation) throw new Error('Attestation not found');
+    
+    // Check if already revoked
+    if (attestation.is_revoked) {
+      throw new Error(`Attestation ${attestationId} is already revoked`);
+    }
+    
+    // Verify current user is the creator
+    if (attestation.creator.toLowerCase() !== currentAddress.toLowerCase()) {
+      throw new Error('Only the creator can revoke an attestation');
+    }
+    
+    // Get schema to check if revocation is allowed
+    const schema = await daoSign.getSchema(attestation.schema_id);
+    if (!schema.metadata.is_revokable) {
+      throw new Error('This attestation cannot be revoked per schema policy');
+    }
+    
+    // Display document details for confirmation
+    console.log('Document to be revoked:');
+    console.log(`- Type: ${schema.metadata.name}`);
+    console.log(`- Created: ${new Date(attestation.created_at * 1000).toLocaleString()}`);
+    attestation.attestation_result.forEach(field => {
+      console.log(`- ${field.name}: ${field.value}`);
+    });
+    
+    // 2. Confirm revocation with user (in a real app, this would be a UI prompt)
+    console.log('Do you want to proceed with revocation? This action cannot be undone.');
+    // In this example, we'll assume confirmation is granted
+    
+    // 3. Revoke the attestation
+    console.log('Revoking attestation...');
+    await daoSign.revokeAttestation(attestationId);
+    console.log(`Attestation ${attestationId} has been successfully revoked!`);
+    
+    // 4. Verify revocation status
+    const updatedAttestation = await daoSign.getAttestation(attestationId);
+    console.log('Revocation details:');
+    console.log(`- Revoked: ${updatedAttestation.is_revoked ? 'Yes' : 'No'}`);
+    console.log(`- Revocation time: ${new Date(updatedAttestation.revoked_at * 1000).toLocaleString()}`);
+    
+    // Check NFT status if applicable
+    if (schema.metadata.is_nft) {
+      console.log('Any NFTs associated with this attestation have been burned.');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error during revocation process:', error);
+    throw error;
+  }
+}
+
+// Call the function
+const attestationId = 123; // Replace with actual attestation ID
+revokeAttestation(attestationId)
+  .then(() => console.log('Revocation process completed'))
+  .catch(error => console.error('Revocation failed:', error.message));
+```
+
+## Revocation and Document History
+
+Even after an attestation is revoked:
+
+1. The attestation still exists on the blockchain with a `revoked` status
+2. The original content and signatures remain visible for audit purposes
+3. The revocation timestamp and signature are added to the attestation
+4. Any systems checking the attestation will see it's no longer valid
+
+## Reasons for Revocation
+
+Common reasons to revoke attestations include:
+
+- Document contains errors or inaccuracies
+- Agreement has been terminated or superseded
+- Credentials or certifications have been withdrawn
+- Document is no longer relevant or valid
+
+## Next Steps
+
+After revoking an attestation, you may want to:
+
+1. Notify all parties that the attestation has been revoked
+2. Create a new, corrected attestation if needed
+3. Update any systems that relied on the now-revoked attestation
+4. Keep records of both the original and revoked attestation for compliance purposes

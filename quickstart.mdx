@@ -1,97 +1,148 @@
 ---
-title: 'Quickstart'
-description: 'Start building awesome documentation in under 5 minutes'
+title: 'Quickstart Guide'
+description: 'Get started with DaoSign in minutes'
 ---
 
-## Setup your development
+# Quickstart Guide
 
-Learn how to update your docs locally and deploy them to the public.
+This guide will help you quickly get started with DaoSign's core functionality. We'll walk through creating a schema, generating an attestation, collecting signatures, and verifying the agreement.
 
-### Edit and preview
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="github" title="Clone your docs locally">
-    During the onboarding process, we created a repository on your Github with
-    your docs content. You can find this repository on our
-    [dashboard](https://dashboard.mintlify.com). To clone the repository
-    locally, follow these
-    [instructions](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
-    in your terminal.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Preview changes">
-    Previewing helps you make sure your changes look as intended. We built a
-    command line interface to render these changes locally. 
-    1. Install the
-    [Mintlify CLI](https://www.npmjs.com/package/mintlify) to preview the
-    documentation changes locally with this command: ``` npm i -g mintlify ```
-    2. Run the following command at the root of your documentation (where
-    `docs.json` is): ``` mintlify dev ```
-    <Note>
-      If you’re currently using the legacy ```mint.json``` configuration file, please update the Mintlify CLI:
+- An Ethereum wallet (like MetaMask)
+- Some ETH for gas fees on your chosen network
+- Basic understanding of blockchain transactions
 
+## Installation
 
-      ```npm i -g mintlify@latest```
-      And run the new upgrade command in your docs repository:
+```bash
+# Install via npm
+npm install daosign-client
 
-      ```mintlify upgrade```
-      You should now be using the new ```docs.json``` configuration file. Feel free to delete the ```mint.json``` file from your repository.
-    </Note>
-  </Accordion>
-</AccordionGroup>
+# Or using yarn
+yarn add daosign-client
+```
 
-### Deploy your changes
+## Basic Usage
 
-<AccordionGroup>
+### 1. Initialize DaoSign Client
 
-<Accordion icon="message-bot" title="Install our Github app">
-  Our Github app automatically deploys your changes to your docs site, so you
-  don't need to manage deployments yourself. You can find the link to install on
-  your [dashboard](https://dashboard.mintlify.com). Once the bot has been
-  successfully installed, there should be a check mark next to the commit hash
-  of the repo.
-</Accordion>
-<Accordion icon="rocket" title="Push your changes">
-  [Commit and push your changes to
-  Git](https://docs.github.com/en/get-started/using-git/pushing-commits-to-a-remote-repository#about-git-push)
-  for your changes to update in your docs site. If you push and don't see that
-  the Github app successfully deployed your changes, you can also manually
-  update your docs through our [dashboard](https://dashboard.mintlify.com).
-</Accordion>
+```javascript
+import { DaoSignClient } from 'daosign-client';
 
-</AccordionGroup>
+// Connect to a network (mainnet, testnet, or local)
+const daosign = new DaoSignClient({
+  provider: window.ethereum, // Or your preferred provider
+  network: 'goerli', // Or the network of your choice
+});
 
-## Update your docs
+// Connect wallet
+await daosign.connect();
+```
 
-Add content directly in your files with MDX syntax and React components. You can use any of our components, or even build your own.
+### 2. Create a Document Schema
 
-<CardGroup>
+```javascript
+// Define a simple NDA schema
+const ndaSchema = {
+  metadata: {
+    name: "Non-Disclosure Agreement",
+    description: "Standard NDA template",
+    attestation_type: "agreement",
+    is_public: true,
+    is_revokable: true,
+    expire_in: 31536000, // 1 year in seconds
+    is_nft: true,
+    nft_name: "NDA Proof",
+    nft_symbol: "NDAP"
+  },
+  schema_definition: [
+    {
+      definition_type: "string",
+      definition_name: "Company Name"
+    },
+    {
+      definition_type: "string",
+      definition_name: "Consultant Name"
+    },
+    {
+      definition_type: "uint256",
+      definition_name: "Agreement Date"
+    },
+    {
+      definition_type: "string",
+      definition_name: "Confidential Information Description"
+    }
+  ],
+  signatory_policy: [] // Empty means no special requirements for signers
+};
 
-<Card title="Add Content With MDX" icon="file" href="/essentials/markdown">
-  Add content to your docs with MDX syntax.
-</Card>
+// Create the schema on blockchain
+const schemaId = await daosign.createSchema(ndaSchema);
+console.log(`Created schema with ID: ${schemaId}`);
+```
 
-<Card
-  title="Add Code Blocks"
-  icon="square-code"
-  href="/essentials/code"
->
-  Add code directly to your docs with syntax highlighting.
-</Card>
+### 3. Create an Attestation (Document Instance)
 
-<Card
-  title="Add Images"
-  icon="image"
-  href="/essentials/images"
->
-  Add images to your docs to make them more engaging.
-</Card>
+```javascript
+// Create a document instance from the schema
+const attestation = {
+  schema_id: schemaId,
+  attestation_result: [
+    {
+      attestation_result_type: "string",
+      name: "Company Name",
+      value: "Acme Corporation"
+    },
+    {
+      attestation_result_type: "string",
+      name: "Consultant Name",
+      value: "John Doe"
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Agreement Date",
+      value: Math.floor(Date.now() / 1000) // Current timestamp
+    },
+    {
+      attestation_result_type: "string",
+      name: "Confidential Information Description",
+      value: "All product designs, customer lists, and financial data"
+    }
+  ],
+  recipient: "0x1234...", // Address of recipient
+  signatories: ["0x1234...", "0x5678..."] // Addresses required to sign
+};
 
-<Card
-  title="Add Custom Components"
-  icon="puzzle-piece"
-  href="/essentials/reusable-snippets"
->
-  Add templates to your docs to make them more reusable.
-</Card>
+// Create the attestation on blockchain
+const attestationId = await daosign.createAttestation(attestation);
+console.log(`Created attestation with ID: ${attestationId}`);
+```
 
-</CardGroup>
+### 4. Sign the Attestation
+
+```javascript
+// Each signatory signs the attestation (each runs this code)
+await daosign.signAttestation(attestationId);
+console.log(`Attestation ${attestationId} signed`);
+
+// After all signatories sign, the Proof of Agreement is automatically generated
+```
+
+### 5. Verify the Agreement
+
+```javascript
+// Get proof of agreement
+const agreement = await daosign.getProofOfAgreement(attestationId);
+console.log(`Agreement verified with ${agreement.signatures.length} signatures`);
+
+// If the schema was configured for NFTs, an NFT representing the agreement is minted
+```
+
+## What's Next?
+
+- Explore [Core Concepts](/core-concepts/schemas) to understand DaoSign's architecture
+- Check out [Tutorials](/tutorials/creating-schema) for more detailed examples
+- See [Technical Reference](/technical/architecture) for development details
+
+Now you're ready to start using DaoSign for your document signing needs!

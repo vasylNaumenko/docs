@@ -1,0 +1,321 @@
+---
+title: 'Architecture'
+description: 'Technical architecture of the DaoSign protocol'
+---
+
+# DaoSign Architecture
+
+DaoSign is built as a modular smart contract system on the Ethereum blockchain. This document provides an overview of the architectural design, components, and interactions within the system.
+
+## System Overview
+
+DaoSign consists of several integrated components:
+
+1. **Core Contracts**: The main contract logic that handles schemas, attestations, and proofs
+2. **Interface Contracts**: Structured interfaces that define data structures and function signatures
+3. **Token Contracts**: ERC-721 implementation for representing attestations as NFTs
+4. **Helper Libraries**: Utilities for data processing and signature verification
+
+## Architectural Diagram
+
+```mermaid
+graph TD
+    User[User/dApp] -->|Interacts with| DaoSign
+    
+    subgraph "Core Contracts"
+        DaoSign[DaoSign.sol]
+        DaoSignV2[DaoSignV2.sol]
+        DaoSign -->|Upgrades to| DaoSignV2
+    end
+    
+    subgraph "Interfaces"
+        IDaoSign[IDaoSign.sol]
+        ISchema[Schema.sol]
+        IAttestation[Attestation.sol]
+        
+        DaoSign -->|Implements| IDaoSign
+        IDaoSign -->|Extends| ISchema
+        IDaoSign -->|Extends| IAttestation
+    end
+    
+    subgraph "NFT Components"
+        TokenFactory[DaoSignTokenFactory]
+        TokenImpl[DaoSignToken]
+        
+        DaoSign -->|Creates NFT collections via| TokenFactory
+        TokenFactory -->|Deploys| TokenImpl
+    end
+    
+    subgraph "Helper Libraries"
+        DataResolver[DataResolver.sol]
+        ProofsVerification[ProofsVerification.sol]
+        
+        DaoSign -->|Uses| DataResolver
+        DaoSign -->|Uses| ProofsVerification
+    end
+```
+
+## Core Components
+
+### DaoSign.sol
+
+The main contract that implements the core functionality:
+
+- Creation and management of schemas
+- Creation and management of attestations
+- Verification of signatures and agreements
+- Management of NFT tokens for attestations
+
+### DaoSignV2.sol
+
+An upgraded version of the core contract that adds:
+
+- Version tracking
+- Enhanced functionality (as needed)
+- Backward compatibility with DaoSign.sol
+
+## Data Structures
+
+The protocol uses several primary data structures:
+
+### Schema
+
+```typescript
+interface Schema {
+  schema_id: uint256;
+  metadata: SchemaMetadata;
+  signatory_policy: SignatoryPolicy[];
+  schema_definition: SchemaDefinition[];
+  signature: bytes;
+}
+```
+
+### Attestation
+
+```typescript
+interface Attestation {
+  attestation_id: uint256;
+  schema_id: uint256;
+  attestation_result: AttestationResult[];
+  creator: address;
+  recipient: address;
+  created_at: uint32;
+  signatories: address[];
+  signature: bytes;
+}
+```
+
+### Internal Attestation (Extended)
+
+```typescript
+interface InternalAttestation {
+  // All properties from Attestation, plus:
+  is_revoked: boolean;
+  revoked_at: uint32;
+  revoke_signature: bytes;
+}
+```
+
+### Proof of Signature
+
+```typescript
+interface ProofOfSignature {
+  attestation_id: uint256;
+  creator: address;
+  created_at: uint32;
+  signature: bytes;
+}
+```
+
+### Proof of Agreement
+
+```typescript
+interface ProofOfAgreement {
+  attestation_id: uint256;
+  signatures: bytes[];
+}
+```
+
+## Upgrade Pattern
+
+DaoSign uses the UUPS (Universal Upgradeable Proxy Standard) pattern for contract upgrades:
+
+- Allows for contract logic to be upgraded while maintaining state
+- Provides a standard interface for managing upgrade permissions
+- Ensures backward compatibility with existing data
+
+```mermaid
+graph TD
+    User -->|Interacts with| Proxy[Proxy Contract]
+    Proxy -->|Delegates calls to| Implementation[Implementation Contract]
+    Admin -->|Can upgrade| Implementation
+    Implementation -->|Can be upgraded to| NewImplementation[New Implementation]
+```
+
+## NFT Integration
+
+DaoSign uses a factory pattern for NFT creation:
+
+1. When a schema with `is_nft = true` is created, a new NFT collection is deployed
+2. The collection is specific to that schema
+3. When an attestation is created or fully signed, an NFT can be minted
+4. If an attestation is revoked, the corresponding NFT is burned
+
+## Processing Flow
+
+### Schema Creation
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant DaoSign
+    participant TokenFactory
+    
+    User->>DaoSign: store_schema(schemaData)
+    DaoSign->>DaoSign: Validate schema
+    DaoSign->>DaoSign: Verify creator signature
+    
+    alt is_nft == true
+        DaoSign->>TokenFactory: deploy(name, symbol)
+        TokenFactory-->>DaoSign: collection address
+        DaoSign->>DaoSign: Store collection address
+    end
+    
+    DaoSign->>DaoSign: Store schema
+    DaoSign-->>User: SchemaCreated event
+```
+
+### Attestation Creation
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant DaoSign
+    participant NFTCollection
+    
+    User->>DaoSign: store_attestation(attestationData)
+    DaoSign->>DaoSign: Validate signature
+    DaoSign->>DaoSign: Get schema
+    DaoSign->>DaoSign: Validate attestation against schema
+    
+    alt is_nft == true && no signatories
+        DaoSign->>NFTCollection: safeMint(recipient, attestationId)
+        NFTCollection-->>DaoSign: Transfer event
+    end
+    
+    DaoSign->>DaoSign: Store attestation
+    DaoSign-->>User: AttestationCreated event
+```
+
+### Signing Process
+
+```mermaid
+sequenceDiagram
+    participant Signatory
+    participant DaoSign
+    participant NFTCollection
+    
+    Signatory->>DaoSign: store_pos(attestationId, signature)
+    DaoSign->>DaoSign: Verify not already signed
+    DaoSign->>DaoSign: Get attestation
+    DaoSign->>DaoSign: Verify signature
+    DaoSign->>DaoSign: Verify signatory is authorized
+    DaoSign->>DaoSign: Validate signatory policy (if any)
+    DaoSign->>DaoSign: Store proof of signature
+    
+    alt All signatories have signed
+        DaoSign->>DaoSign: Create proof of agreement
+        
+        alt is_nft == true
+            DaoSign->>NFTCollection: safeMint(DaoSign, attestationId)
+            NFTCollection-->>DaoSign: Transfer event + onERC721Received callback
+        end
+    end
+    
+    DaoSign-->>Signatory: ProofOfSignatureCreated event
+```
+
+### Revocation Process
+
+```mermaid
+sequenceDiagram
+    participant Creator
+    participant DaoSign
+    participant NFTCollection
+    
+    Creator->>DaoSign: store_revoke(attestationId, revokeSignature)
+    DaoSign->>DaoSign: Get attestation
+    DaoSign->>DaoSign: Get schema
+    DaoSign->>DaoSign: Verify schema allows revocation
+    DaoSign->>DaoSign: Verify caller is creator
+    DaoSign->>DaoSign: Mark attestation as revoked
+    DaoSign->>DaoSign: Verify revocation signature
+    
+    alt is_nft == true
+        DaoSign->>NFTCollection: burn(attestationId)
+        NFTCollection-->>DaoSign: Transfer event
+    end
+    
+    DaoSign->>DaoSign: Update attestation storage
+    DaoSign-->>Creator: Revoked event
+```
+
+## Storage Model
+
+DaoSign uses several key mappings for data storage:
+
+```solidity
+// Schema storage
+mapping(uint256 => InternalSchema) private schema_by_id;
+
+// Attestation storage
+mapping(uint256 => InternalAttestation) private attestation_by_id;
+
+// Signatures storage
+mapping(uint256 => ProofOfSignature[]) private proofs_of_signature;
+
+// Agreements storage
+mapping(uint256 => ProofOfAgreement[]) private proofs_of_agreement;
+
+// Signature status tracking
+mapping(uint256 => mapping(address => bool)) private signed_attestation;
+
+// User attestation lookup
+mapping(uint256 => mapping(address => InternalAttestation[])) private user_attestations;
+
+// NFT collection tracking
+mapping(uint256 => address) public collection_by_schema;
+```
+
+## Security Considerations
+
+DaoSign implements several security measures:
+
+1. **Signature Verification**: All operations requiring authorization use cryptographic signatures
+2. **Role-Based Access**: Different functions are restricted to specific roles (creator, signatories)
+3. **Ownership Control**: Upgrades are restricted to the contract owner
+4. **Input Validation**: Extensive validation of inputs to prevent incorrect or malicious data
+5. **Signatory Verification**: Ensuring only authorized signatories can sign attestations
+
+## Integration Points
+
+DaoSign provides several integration points for dApps and other systems:
+
+1. **Direct Contract Interaction**: Applications can interact directly with the smart contracts
+2. **Events**: The system emits events for all major actions, enabling off-chain systems to track on-chain activity
+3. **NFT Standards**: The NFT implementation follows ERC-721 standards for compatibility with wallets and marketplaces
+4. **Query Functions**: Various view functions allow querying the state of schemas, attestations, and signatures
+
+## Version Upgrade Process
+
+The DaoSign protocol uses a careful upgrade process:
+
+1. **New Implementation**: Deploy the new implementation contract (e.g., DaoSignV2)
+2. **Admin Action**: The owner calls the upgrade function on the proxy
+3. **Initialization**: The new implementation is initialized with any new state variables
+4. **Version Tracking**: The new version records its version information
+
+This approach ensures that:
+- No data is lost during upgrades
+- Users experience no service interruption
+- New functionality can be added over time

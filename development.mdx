@@ -1,107 +1,981 @@
 ---
-title: 'Development'
-description: 'Preview changes locally to update your docs'
+title: 'Development Guide'
+description: 'Guide for developers working on DaoSign projects'
 ---
 
-<Info>
-  **Prerequisite**: Please install Node.js (version 19 or higher) before proceeding. <br />
-  Please upgrade to ```docs.json``` before proceeding and delete the legacy ```mint.json``` file.
-</Info>
+# Development Guide
 
-Follow these steps to install and run Mintlify on your operating system:
+This guide provides information for developers who want to build applications with DaoSign or contribute to the DaoSign protocol itself.
 
-**Step 1**: Install Mintlify:
+## Environment Setup
 
-<CodeGroup>
+### Prerequisites
 
-  ```bash npm
-  npm i -g mintlify
-  ```
+- [Node.js](https://nodejs.org/) (v16 or higher)
+- [npm](https://www.npmjs.com/) (v7 or higher)
+- [Hardhat](https://hardhat.org/) for smart contract development
+- A Web3 provider (like [MetaMask](https://metamask.io/))
+- An Ethereum RPC provider (like [Infura](https://infura.io/) or [Alchemy](https://www.alchemy.com/))
 
-```bash yarn
-yarn global add mintlify
-```
+### Installation
 
-</CodeGroup>
-
-**Step 2**: Navigate to the docs directory (where the `docs.json` file is located) and execute the following command:
+Clone the repository and install dependencies:
 
 ```bash
-mintlify dev
+# Clone the repository
+git clone https://github.com/yourusername/daosign.git
+cd daosign
+
+# Install dependencies
+npm install
 ```
 
-A local preview of your documentation will be available at `http://localhost:3000`.
+### Contract Compilation
 
-### Custom Ports
-
-By default, Mintlify uses port 3000. You can customize the port Mintlify runs on by using the `--port` flag. To run Mintlify on port 3333, for instance, use this command:
+Compile the smart contracts:
 
 ```bash
-mintlify dev --port 3333
+npx hardhat compile
 ```
 
-If you attempt to run Mintlify on a port that's already in use, it will use the next available port:
+### Testing
 
-```md
-Port 3000 is already in use. Trying 3001 instead.
-```
-
-## Mintlify Versions
-
-Please note that each CLI release is associated with a specific version of Mintlify. If your local website doesn't align with the production version, please update the CLI:
-
-<CodeGroup>
-
-```bash npm
-npm i -g mintlify@latest
-```
-
-```bash yarn
-yarn global upgrade mintlify
-```
-
-</CodeGroup>
-
-## Validating Links
-
-The CLI can assist with validating reference links made in your documentation. To identify any broken links, use the following command:
+Run the test suite:
 
 ```bash
-mintlify broken-links
+npx hardhat test
+```
+
+### Local Deployment
+
+Deploy to a local Hardhat network:
+
+```bash
+# Start a local Ethereum node
+npx hardhat node
+
+# Deploy contracts to local network
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+## Project Structure
+
+The DaoSign project is organized as follows:
+
+```
+daosign/
+├── contracts/                  # Smart contracts
+│   ├── DaoSign.sol             # Main contract
+│   ├── DaoSign_v2.sol          # Upgraded version
+│   ├── daosign_erc721/         # NFT token contracts
+│   ├── helpers/                # Helper libraries
+│   └── interfaces/             # Contract interfaces
+├── test/                       # Tests
+├── scripts/                    # Deployment scripts
+├── artifacts/                  # Compiled contracts
+└── hardhat.config.js           # Hardhat configuration
+```
+
+## Smart Contract Development
+
+### Contract Architecture
+
+DaoSign uses a modular contract architecture with several key components:
+
+1. **Core Contract**: `DaoSign.sol` implements the main protocol functionality
+2. **Upgradeable Design**: Uses the UUPS (Universal Upgradeable Proxy Standard) pattern
+3. **Token Integration**: NFT contracts for tokenizing attestations
+4. **Helper Libraries**: Utilities for data processing and signature verification
+
+### Upgrading Contracts
+
+DaoSign follows the UUPS upgrade pattern:
+
+1. Deploy a new implementation contract (e.g., `DaoSignV3.sol`)
+2. Call the `upgradeTo` function on the proxy contract
+3. Initialize the new implementation with any new state variables
+
+Example upgrade script:
+
+```javascript
+const { ethers, upgrades } = require('hardhat');
+
+async function main() {
+  console.log('Deploying DaoSignV3...');
+  
+  // Deploy the new implementation
+  const DaoSignV3 = await ethers.getContractFactory('DaoSignV3');
+  
+  // Upgrade the proxy to the new implementation
+  const proxyAddress = '0xYourExistingProxyAddress';
+  await upgrades.upgradeProxy(proxyAddress, DaoSignV3);
+  
+  console.log('DaoSign upgraded to V3');
+  
+  // If needed, initialize the new version
+  const daoSignV3 = await ethers.getContractAt('DaoSignV3', proxyAddress);
+  await daoSignV3.initializeV3();
+  
+  console.log('DaoSignV3 initialized');
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+```
+
+### Security Considerations
+
+When developing for DaoSign, keep these security considerations in mind:
+
+1. **Signature Verification**: Always validate signatures to prevent unauthorized actions
+2. **Access Control**: Carefully manage who can perform what actions
+3. **Gas Optimization**: Optimize for gas usage, especially in loops
+4. **Reentrancy Protection**: Protect against reentrancy attacks
+5. **Secure Upgradeability**: Follow best practices for contract upgrades
+
+## Client Development
+
+### Web3 Client Integration
+
+To integrate DaoSign into a web application, you'll need to:
+
+1. Connect to Ethereum using a Web3 provider
+2. Initialize contract instances
+3. Implement signature generation and verification
+4. Handle contract events
+5. Build a user interface for schema and attestation management
+
+Example setup with ethers.js:
+
+```javascript
+import { ethers } from 'ethers';
+import { DaoSignABI } from './abis/DaoSignABI';
+
+// Contract addresses for different networks
+const NETWORKS = {
+  mainnet: {
+    daoSign: "0x1234567890123456789012345678901234567890",
+    daoSignFactory: "0x0987654321098765432109876543210987654321"
+  },
+  goerli: {
+    daoSign: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    daoSignFactory: "0xfedcbafedcbafedcbafedcbafedcbafedcbafedc"
+  }
+};
+
+class DaoSignClient {
+  constructor(network = 'mainnet') {
+    // Connect to Ethereum
+    this.provider = new ethers.providers.Web3Provider(window.ethereum);
+    this.signer = this.provider.getSigner();
+    this.network = network;
+    
+    // Initialize contract instances
+    this.daoSign = new ethers.Contract(
+      NETWORKS[network].daoSign,
+      DaoSignABI,
+      this.signer
+    );
+  }
+  
+  // Connect wallet
+  async connect() {
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    this.address = await this.signer.getAddress();
+    return this.address;
+  }
+  
+  // Get current connected address
+  async getAddress() {
+    if (!this.address) {
+      this.address = await this.signer.getAddress();
+    }
+    return this.address;
+  }
+  
+  // Example method to create a schema
+  async createSchema(schema) {
+    // Ensure creator field matches the signer
+    schema.metadata.creator = await this.getAddress();
+    
+    // Generate signature
+    const schemaHash = this.hashSchema(schema);
+    const signature = await this.signMessage(schemaHash);
+    schema.signature = signature;
+    
+    // Create the schema on blockchain
+    const tx = await this.daoSign.store_schema(schema);
+    const receipt = await tx.wait();
+    
+    // Get schema ID from events
+    const event = receipt.events.find(e => e.event === 'SchemaCreated');
+    return event.args.schemaID.toString();
+  }
+  
+  // Other methods for attestations, signatures, etc.
+  // ...
+  
+  // Helper methods for hashing and signing
+  hashSchema(schema) {
+    // Implementation depends on contract's signature verification logic
+    return ethers.utils.keccak256(
+      ethers.utils.defaultAbiCoder.encode(
+        ['string', 'address', 'bool', 'bool', 'bool'],
+        [
+          schema.metadata.name,
+          schema.metadata.creator,
+          schema.metadata.is_nft,
+          schema.metadata.is_public,
+          schema.metadata.is_revokable
+        ]
+      )
+    );
+  }
+  
+  async signMessage(hash) {
+    const messageHashBytes = ethers.utils.arrayify(hash);
+    return this.signer.signMessage(messageHashBytes);
+  }
+}
+
+export default DaoSignClient;
+```
+
+### React Integration Example
+
+Here's an example of a React component for creating a schema:
+
+```jsx
+import React, { useState, useEffect } from 'react';
+import DaoSignClient from './DaoSignClient';
+
+function SchemaCreator() {
+  const [client, setClient] = useState(null);
+  const [connected, setConnected] = useState(false);
+  const [schema, setSchema] = useState({
+    metadata: {
+      name: '',
+      description: '',
+      attestation_type: 'agreement',
+      is_nft: true,
+      is_public: true,
+      is_revokable: true,
+      expire_in: 0,
+      nft_name: '',
+      nft_symbol: ''
+    },
+    schema_definition: [
+      { definition_type: 'string', definition_name: '' }
+    ],
+    signatory_policy: []
+  });
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  
+  // Initialize client
+  useEffect(() => {
+    const newClient = new DaoSignClient('goerli');
+    setClient(newClient);
+  }, []);
+  
+  // Connect wallet
+  async function connectWallet() {
+    if (!client) return;
+    
+    try {
+      const address = await client.connect();
+      setConnected(true);
+      console.log(`Connected: ${address}`);
+    } catch (error) {
+      console.error('Connection error:', error);
+    }
+  }
+  
+  // Handle form changes
+  function handleMetadataChange(e) {
+    const { name, value, type, checked } = e.target;
+    setSchema(prev => ({
+      ...prev,
+      metadata: {
+        ...prev.metadata,
+        [name]: type === 'checkbox' ? checked : value
+      }
+    }));
+  }
+  
+  // Add a new field to schema definition
+  function addField() {
+    setSchema(prev => ({
+      ...prev,
+      schema_definition: [
+        ...prev.schema_definition,
+        { definition_type: 'string', definition_name: '' }
+      ]
+    }));
+  }
+  
+  // Update a field in schema definition
+  function updateField(index, key, value) {
+    setSchema(prev => {
+      const newDefinition = [...prev.schema_definition];
+      newDefinition[index] = {
+        ...newDefinition[index],
+        [key]: value
+      };
+      return {
+        ...prev,
+        schema_definition: newDefinition
+      };
+    });
+  }
+  
+  // Create schema
+  async function createSchema(e) {
+    e.preventDefault();
+    
+    if (!client || !connected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+    
+    setLoading(true);
+    setResult(null);
+    
+    try {
+      // Validate schema
+      if (!schema.metadata.name) {
+        throw new Error('Schema name is required');
+      }
+      
+      if (schema.schema_definition.some(field => !field.definition_name)) {
+        throw new Error('All fields must have names');
+      }
+      
+      // If NFT is enabled, require name and symbol
+      if (schema.metadata.is_nft && (!schema.metadata.nft_name || !schema.metadata.nft_symbol)) {
+        throw new Error('NFT name and symbol are required when NFT is enabled');
+      }
+      
+      // Create schema on blockchain
+      const schemaId = await client.createSchema(schema);
+      
+      setResult({
+        success: true,
+        schemaId,
+        message: `Schema created successfully with ID: ${schemaId}`
+      });
+    } catch (error) {
+      console.error('Error creating schema:', error);
+      setResult({
+        success: false,
+        message: `Error: ${error.message}`
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+  
+  return (
+    <div className="schema-creator">
+      <h2>Create New Schema</h2>
+      
+      {!connected && (
+        <button onClick={connectWallet} disabled={!client}>
+          Connect Wallet
+        </button>
+      )}
+      
+      {connected && (
+        <form onSubmit={createSchema}>
+          <h3>Schema Metadata</h3>
+          <div className="form-group">
+            <label htmlFor="name">Name:</label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              value={schema.metadata.name}
+              onChange={handleMetadataChange}
+              required
+            />
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="description">Description:</label>
+            <textarea
+              id="description"
+              name="description"
+              value={schema.metadata.description}
+              onChange={handleMetadataChange}
+            ></textarea>
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="attestation_type">Type:</label>
+            <select
+              id="attestation_type"
+              name="attestation_type"
+              value={schema.metadata.attestation_type}
+              onChange={handleMetadataChange}
+            >
+              <option value="agreement">Agreement</option>
+              <option value="identity">Identity</option>
+              <option value="authority">Authority</option>
+              <option value="certification">Certification</option>
+            </select>
+          </div>
+          
+          <div className="form-group checkbox">
+            <input
+              type="checkbox"
+              id="is_nft"
+              name="is_nft"
+              checked={schema.metadata.is_nft}
+              onChange={handleMetadataChange}
+            />
+            <label htmlFor="is_nft">Enable NFT</label>
+          </div>
+          
+          {schema.metadata.is_nft && (
+            <>
+              <div className="form-group">
+                <label htmlFor="nft_name">NFT Name:</label>
+                <input
+                  type="text"
+                  id="nft_name"
+                  name="nft_name"
+                  value={schema.metadata.nft_name}
+                  onChange={handleMetadataChange}
+                  required={schema.metadata.is_nft}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="nft_symbol">NFT Symbol:</label>
+                <input
+                  type="text"
+                  id="nft_symbol"
+                  name="nft_symbol"
+                  value={schema.metadata.nft_symbol}
+                  onChange={handleMetadataChange}
+                  required={schema.metadata.is_nft}
+                />
+              </div>
+            </>
+          )}
+          
+          <div className="form-group checkbox">
+            <input
+              type="checkbox"
+              id="is_public"
+              name="is_public"
+              checked={schema.metadata.is_public}
+              onChange={handleMetadataChange}
+            />
+            <label htmlFor="is_public">Public Schema</label>
+          </div>
+          
+          <div className="form-group checkbox">
+            <input
+              type="checkbox"
+              id="is_revokable"
+              name="is_revokable"
+              checked={schema.metadata.is_revokable}
+              onChange={handleMetadataChange}
+            />
+            <label htmlFor="is_revokable">Revocable</label>
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="expire_in">Expiration (seconds, 0 for never):</label>
+            <input
+              type="number"
+              id="expire_in"
+              name="expire_in"
+              value={schema.metadata.expire_in}
+              onChange={handleMetadataChange}
+              min="0"
+            />
+          </div>
+          
+          <h3>Schema Definition</h3>
+          {schema.schema_definition.map((field, index) => (
+            <div key={index} className="field-row">
+              <div className="form-group">
+                <label>Type:</label>
+                <select
+                  value={field.definition_type}
+                  onChange={(e) => updateField(index, 'definition_type', e.target.value)}
+                >
+                  <option value="string">String</option>
+                  <option value="boolean">Boolean</option>
+                  <option value="uint256">Number</option>
+                  <option value="bytes">Bytes</option>
+                  <option value="bytes32">Bytes32</option>
+                  <option value="address">Address</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>Name:</label>
+                <input
+                  type="text"
+                  value={field.definition_name}
+                  onChange={(e) => updateField(index, 'definition_name', e.target.value)}
+                  required
+                />
+              </div>
+              
+              {schema.schema_definition.length > 1 && (
+                <button 
+                  type="button" 
+                  className="remove-btn"
+                  onClick={() => {
+                    setSchema(prev => ({
+                      ...prev,
+                      schema_definition: prev.schema_definition.filter((_, i) => i !== index)
+                    }));
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+          
+          <button type="button" onClick={addField}>
+            Add Field
+          </button>
+          
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>
+              {loading ? 'Creating...' : 'Create Schema'}
+            </button>
+          </div>
+          
+          {result && (
+            <div className={`result ${result.success ? 'success' : 'error'}`}>
+              {result.message}
+            </div>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+export default SchemaCreator;
 ```
 
 ## Deployment
 
-<Tip>
-  Unlimited editors available under the [Pro
-  Plan](https://mintlify.com/pricing) and above.
-</Tip>
+### Testnet Deployment
 
-If the deployment is successful, you should see the following:
+Deploy to a testnet (like Goerli):
 
-<Frame>
-  <img src="/images/checks-passed.png" style={{ borderRadius: '0.5rem' }} />
-</Frame>
+```bash
+# Set up environment variables
+export PRIVATE_KEY=your_private_key
+export ALCHEMY_API_KEY=your_alchemy_api_key
 
-## Code Formatting
+# Deploy to Goerli
+npx hardhat run scripts/deploy.js --network goerli
+```
 
-We suggest using extensions on your IDE to recognize and format MDX. If you're a VSCode user, consider the [MDX VSCode extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx) for syntax highlighting, and [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) for code formatting.
+### Mainnet Deployment
 
-## Troubleshooting
+For mainnet deployment, follow these best practices:
 
-<AccordionGroup>
-  <Accordion title='Error: Could not load the "sharp" module using the darwin-arm64 runtime'>
+1. **Audit Smart Contracts**: Have your contracts audited by a reputable firm
+2. **Gas Optimization**: Optimize contracts for gas efficiency
+3. **Thorough Testing**: Test extensively on testnets before mainnet deployment
+4. **Governance**: Consider implementing a governance mechanism for upgrades
+5. **Emergency Procedures**: Have procedures in place for emergency situations
 
-    This may be due to an outdated version of node. Try the following:
-    1. Remove the currently-installed version of mintlify: `npm remove -g mintlify`
-    2. Upgrade to Node v19 or higher.
-    3. Reinstall mintlify: `npm install -g mintlify`
-  </Accordion>
+Deploy to mainnet:
 
-  <Accordion title="Issue: Encountering an unknown error">
+```bash
+# Deploy to mainnet (be cautious!)
+npx hardhat run scripts/deploy.js --network mainnet
+```
+
+## Testing Strategies
+
+### Unit Testing
+
+Write unit tests for individual contract functions:
+
+```javascript
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("DaoSign", function () {
+  let DaoSign;
+  let daoSign;
+  let DaoSignFactory;
+  let daoSignFactory;
+  let owner;
+  let addr1;
+  let addr2;
   
-    Solution: Go to the root of your device and delete the \~/.mintlify folder. Afterwards, run `mintlify dev` again.
-  </Accordion>
-</AccordionGroup>
+  beforeEach(async function () {
+    // Deploy the factory
+    DaoSignFactory = await ethers.getContractFactory("DaoSignTokenFactory");
+    daoSignFactory = await DaoSignFactory.deploy();
+    await daoSignFactory.deployed();
+    
+    // Deploy DaoSign
+    DaoSign = await ethers.getContractFactory("DaoSign");
+    daoSign = await DaoSign.deploy();
+    await daoSign.deployed();
+    
+    // Initialize
+    await daoSign.initialize(daoSignFactory.address);
+    
+    // Get signers
+    [owner, addr1, addr2] = await ethers.getSigners();
+  });
+  
+  describe("Schema Creation", function () {
+    it("Should allow creating a schema", async function () {
+      // Create a schema
+      const schema = {
+        schema_id: 0,
+        metadata: {
+          name: "Test Schema",
+          description: "A test schema",
+          attestation_type: "agreement",
+          nft_name: "Test NFT",
+          nft_symbol: "TEST",
+          creator: owner.address,
+          created_at: 0,
+          is_nft: true,
+          is_public: true,
+          is_revokable: true,
+          expire_in: 0
+        },
+        schema_definition: [
+          { definition_type: "string", definition_name: "Field 1" }
+        ],
+        signatory_policy: [],
+        signature: "0x" // Will be generated
+      };
+      
+      // Generate signature
+      const schemaHash = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+          ['string', 'address', 'bool', 'bool', 'bool'],
+          [
+            schema.metadata.name,
+            schema.metadata.creator,
+            schema.metadata.is_nft,
+            schema.metadata.is_public,
+            schema.metadata.is_revokable
+          ]
+        )
+      );
+      
+      const messageHashBytes = ethers.utils.arrayify(schemaHash);
+      schema.signature = await owner.signMessage(messageHashBytes);
+      
+      // Create schema
+      await expect(daoSign.store_schema(schema))
+        .to.emit(daoSign, "SchemaCreated")
+        .withArgs(0);
+      
+      // Verify schema was created
+      const nextSchemaId = await daoSign.schema_id();
+      expect(nextSchemaId).to.equal(1);
+    });
+    
+    it("Should reject schema creation from unauthorized creator", async function () {
+      // Create a schema
+      const schema = {
+        schema_id: 0,
+        metadata: {
+          name: "Test Schema",
+          description: "A test schema",
+          attestation_type: "agreement",
+          nft_name: "Test NFT",
+          nft_symbol: "TEST",
+          creator: addr1.address, // Different from sender
+          created_at: 0,
+          is_nft: true,
+          is_public: true,
+          is_revokable: true,
+          expire_in: 0
+        },
+        schema_definition: [
+          { definition_type: "string", definition_name: "Field 1" }
+        ],
+        signatory_policy: [],
+        signature: "0x" // Will be generated
+      };
+      
+      // Generate signature
+      const schemaHash = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+          ['string', 'address', 'bool', 'bool', 'bool'],
+          [
+            schema.metadata.name,
+            schema.metadata.creator,
+            schema.metadata.is_nft,
+            schema.metadata.is_public,
+            schema.metadata.is_revokable
+          ]
+        )
+      );
+      
+      const messageHashBytes = ethers.utils.arrayify(schemaHash);
+      schema.signature = await owner.signMessage(messageHashBytes);
+      
+      // Attempt to create schema (should fail)
+      await expect(daoSign.store_schema(schema))
+        .to.be.revertedWith("UnauthorizedSchemaCreator");
+    });
+  });
+  
+  // Additional test cases for attestations, signatures, etc.
+  // ...
+});
+```
 
-Curious about what changed in the CLI version? [Check out the CLI changelog.](https://www.npmjs.com/package/mintlify?activeTab=versions)
+### Integration Testing
+
+Test the interaction between different contract components:
+
+```javascript
+describe("Integration Tests", function () {
+  it("Should create a schema, attestation, and collect signatures", async function () {
+    // Create schema
+    const schemaId = await createTestSchema(daoSign, owner);
+    
+    // Create attestation
+    const attestation = {
+      attestation_id: 0,
+      schema_id: schemaId,
+      attestation_result: [
+        {
+          attestation_result_type: "string",
+          name: "Field 1",
+          value: ethers.utils.toUtf8Bytes("Test Value")
+        }
+      ],
+      creator: owner.address,
+      recipient: addr1.address,
+      created_at: 0,
+      signatories: [owner.address, addr1.address],
+      signature: "0x" // Will be generated
+    };
+    
+    // Generate attestation signature
+    attestation.signature = await generateAttestationSignature(attestation, owner);
+    
+    // Create attestation
+    await expect(daoSign.store_attestation(attestation))
+      .to.emit(daoSign, "AttestationCreated")
+      .withArgs(0);
+    
+    // First signatory (owner) signs
+    const ownerSignature = await generateSignature(0, owner);
+    await daoSign.store_pos(0, ownerSignature);
+    
+    // Second signatory (addr1) signs
+    const addr1Signature = await generateSignature(0, addr1);
+    await daoSign.connect(addr1).store_pos(0, addr1Signature);
+    
+    // Check for proof of agreement
+    const agreements = await daoSign.get_proof_of_agreement(0);
+    expect(agreements.length).to.equal(1);
+    expect(agreements[0].signatures.length).to.equal(2);
+  });
+});
+```
+
+### End-to-End Testing
+
+Test the full user journey from a client perspective:
+
+```javascript
+describe("End-to-End Tests", function () {
+  it("Should allow a complete document signing workflow", async function () {
+    // Set up client
+    const client = new DaoSignClient(daoSign.address, owner);
+    
+    // 1. Create schema
+    const schema = {
+      metadata: {
+        name: "NDA",
+        description: "Non-disclosure agreement",
+        attestation_type: "agreement",
+        is_nft: true,
+        is_public: true,
+        is_revokable: true,
+        expire_in: 0,
+        nft_name: "NDA Token",
+        nft_symbol: "NDAT"
+      },
+      schema_definition: [
+        { definition_type: "string", definition_name: "Party A" },
+        { definition_type: "string", definition_name: "Party B" },
+        { definition_type: "string", definition_name: "Confidential Information" }
+      ],
+      signatory_policy: []
+    };
+    
+    const schemaId = await client.createSchema(schema);
+    
+    // 2. Create attestation
+    const attestation = {
+      schema_id: schemaId,
+      attestation_result: [
+        {
+          attestation_result_type: "string",
+          name: "Party A",
+          value: "Acme Corp"
+        },
+        {
+          attestation_result_type: "string",
+          name: "Party B",
+          value: "John Doe"
+        },
+        {
+          attestation_result_type: "string",
+          name: "Confidential Information",
+          value: "Product specifications and roadmap"
+        }
+      ],
+      recipient: addr1.address,
+      signatories: [owner.address, addr1.address]
+    };
+    
+    const attestationId = await client.createAttestation(attestation);
+    
+    // 3. First party signs
+    const ownerSignResult = await client.signAttestation(attestationId);
+    expect(ownerSignResult.success).to.equal(true);
+    
+    // 4. Switch to second party
+    const client2 = new DaoSignClient(daoSign.address, addr1);
+    
+    // 5. Second party signs
+    const addr1SignResult = await client2.signAttestation(attestationId);
+    expect(addr1SignResult.success).to.equal(true);
+    expect(addr1SignResult.agreementCreated).to.equal(true);
+    
+    // 6. Verify the agreement is complete
+    const agreementStatus = await client.getAgreementStatus(attestationId);
+    expect(agreementStatus.isComplete).to.equal(true);
+    expect(agreementStatus.hasProofOfAgreement).to.equal(true);
+    
+    // 7. Check NFT creation
+    const tokenStatus = await client.getTokenStatus(schemaId, attestationId);
+    expect(tokenStatus.exists).to.equal(true);
+  });
+});
+```
+
+## Debugging
+
+### Contract Debugging
+
+Use Hardhat's debugging features:
+
+```javascript
+// Enable console.log in contracts
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("Debug Example", function () {
+  it("Debug a transaction", async function () {
+    // Deploy contracts with console.log enabled
+    await hre.run("compile", { quiet: true });
+    
+    // Your test that uses console.log in the contracts
+    // ...
+  });
+});
+```
+
+### Transaction Tracing
+
+Trace transactions for debugging:
+
+```javascript
+// Using ethers.js to trace a transaction
+async function traceTransaction(txHash) {
+  // Get transaction details
+  const tx = await ethers.provider.getTransaction(txHash);
+  const receipt = await ethers.provider.getTransactionReceipt(txHash);
+  
+  console.log('Transaction:', {
+    hash: tx.hash,
+    from: tx.from,
+    to: tx.to,
+    value: tx.value.toString(),
+    gasLimit: tx.gasLimit.toString(),
+    gasPrice: tx.gasPrice.toString(),
+    nonce: tx.nonce,
+    data: tx.data
+  });
+  
+  console.log('Receipt:', {
+    status: receipt.status,
+    gasUsed: receipt.gasUsed.toString(),
+    cumulativeGasUsed: receipt.cumulativeGasUsed.toString(),
+    effectiveGasPrice: receipt.effectiveGasPrice.toString(),
+    blockNumber: receipt.blockNumber,
+    logs: receipt.logs.map(log => ({
+      address: log.address,
+      topics: log.topics,
+      data: log.data
+    }))
+  });
+  
+  // If using Hardhat, you can use the debug task
+  await hre.run("debug", { txHash });
+}
+```
+
+## Contributing
+
+We welcome contributions to the DaoSign protocol! Please follow these guidelines:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Write tests for your changes
+5. Run the existing test suite
+6. Submit a pull request
+
+### Code Style
+
+Follow these style guidelines:
+
+- Use 4 spaces for indentation in Solidity
+- Use 2 spaces for indentation in JavaScript
+- Use descriptive variable and function names
+- Write clear comments for complex logic
+- Follow the [Solidity style guide](https://docs.soliditylang.org/en/latest/style-guide.html)
+
+### Documentation
+
+When contributing new features, please:
+
+1. Update relevant documentation files
+2. Document public functions, parameters, and return values
+3. Provide examples for complex functionality
+4. Update README files as needed
+
+## Resources
+
+- [Solidity Documentation](https://docs.soliditylang.org/)
+- [Hardhat Documentation](https://hardhat.org/getting-started/)
+- [OpenZeppelin Documentation](https://docs.openzeppelin.com/)
+- [Ethereum ERC-721 Standard](https://eips.ethereum.org/EIPS/eip-721)
+- [ethers.js Documentation](https://docs.ethers.io/)
+- [Web3.js Documentation](https://web3js.readthedocs.io/)

@@ -1,0 +1,267 @@
+---
+title: 'NFT Token Contracts'
+description: 'Tokenization of attestations as non-transferable NFTs'
+---
+
+# NFT Token Contracts
+
+DaoSign integrates with the ERC-721 standard to represent attestations as non-transferable NFT tokens. This document covers the token implementation and factory contracts.
+
+## Overview
+
+DaoSign's NFT system consists of two main components:
+
+1. **DaoSignToken**: A non-transferable ERC-721 implementation that represents attestations
+2. **DaoSignTokenFactory**: A factory contract that deploys new token collections for each schema
+
+These components work together to provide tokenized representations of attestations, enabling broader integration with Web3 ecosystems.
+
+## DaoSignToken Contract
+
+```solidity
+contract DaoSignToken is ERC721, ERC721URIStorage, Ownable {
+    address private daosign;
+
+    constructor(address owner, string memory name, string memory symbol) ERC721(name, symbol) {
+        _transferOwnership(owner);
+        daosign = msg.sender;
+    }
+
+    function safeMint(address to, uint256 tokenId, bytes memory data) public {
+        require(msg.sender == owner() || msg.sender == daosign, "DaoSignToken: caller is not authorized");
+        _safeMint(to, tokenId, data);
+    }
+
+    function burn(uint256 tokenId) public {
+        require(msg.sender == owner() || msg.sender == daosign, "DaoSignToken: caller is not authorized");
+        _burn(tokenId);
+    }
+
+    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+
+    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        return super.tokenURI(tokenId);
+    }
+
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize) internal override {
+        require(from == address(0) || to == address(0), "DaoSignToken: tokens are non-transferable");
+        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+    }
+}
+```
+
+The DaoSignToken contract extends OpenZeppelin's ERC-721 implementation with several key modifications:
+
+### Key Features
+
+1. **Non-Transferability**
+   
+   ```solidity
+   function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize) internal override {
+       require(from == address(0) || to == address(0), "DaoSignToken: tokens are non-transferable");
+       super._beforeTokenTransfer(from, to, tokenId, batchSize);
+   }
+   ```
+   
+   This function overrides the standard token transfer behavior to only allow:
+   - Minting (from = address(0))
+   - Burning (to = address(0))
+   - Preventing any token transfers between addresses
+
+2. **Restricted Minting and Burning**
+
+   ```solidity
+   function safeMint(address to, uint256 tokenId, bytes memory data) public {
+       require(msg.sender == owner() || msg.sender == daosign, "DaoSignToken: caller is not authorized");
+       _safeMint(to, tokenId, data);
+   }
+   
+   function burn(uint256 tokenId) public {
+       require(msg.sender == owner() || msg.sender == daosign, "DaoSignToken: caller is not authorized");
+       _burn(tokenId);
+   }
+   ```
+
+   These functions restrict token minting and burning to:
+   - The contract owner (DaoSign contract)
+   - The DaoSign factory that deployed the token contract
+
+3. **Metadata Support**
+
+   ```solidity
+   function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+       return super.tokenURI(tokenId);
+   }
+   ```
+
+   The contract implements the ERC721URIStorage extension to support custom metadata for each token.
+
+## DaoSignTokenFactory Contract
+
+```solidity
+contract DaoSignTokenFactory {
+    function deploy(address owner, string memory name, string memory symbol) external returns (address) {
+        DaoSignToken token = new DaoSignToken(owner, name, symbol);
+        return address(token);
+    }
+}
+```
+
+The DaoSignTokenFactory is a simple factory contract that:
+
+1. Creates new DaoSignToken contracts
+2. Sets ownership to the specified owner (typically the DaoSign contract)
+3. Returns the address of the newly deployed token contract
+
+## NFT Integration Flow
+
+The NFT integration in DaoSign works as follows:
+
+### Schema Creation with NFT Enabled
+
+```solidity
+// Inside DaoSign.store_schema
+if (s.metadata.is_nft) {
+    address collection = DaoSignTokenFactory(daosign_factory).deploy(
+        address(this),
+        s.metadata.nft_name,
+        s.metadata.nft_symbol
+    );
+    collection_by_schema[schema_id] = collection;
+}
+```
+
+When a schema with `is_nft = true` is created:
+1. The factory deploys a new token collection
+2. The collection is owned by the DaoSign contract
+3. The collection address is stored in the `collection_by_schema` mapping
+
+### NFT Minting
+
+NFTs can be minted in several scenarios:
+
+#### For Simple Attestations (No Signatories)
+
+```solidity
+// Inside DaoSign.store_attestation
+if (s.metadata.is_nft && s.signatory_policy.length == 0 && a.recipient != address(0))
+    _mint_token(a.recipient, a.attestation_id, a.schema_id);
+```
+
+For attestations that don't require signatures:
+1. The NFT is minted immediately when the attestation is created
+2. The token is minted to the attestation recipient
+3. The token ID is the same as the attestation ID
+
+#### For Multi-Signature Attestations
+
+```solidity
+// Inside DaoSign._store_poa
+if (s.metadata.is_nft) _mint_token(address(this), a.attestation_id, a.schema_id);
+```
+
+For attestations that require multiple signatures:
+1. The NFT is minted when all required signatures are collected
+2. The token is initially minted to the DaoSign contract itself
+3. This triggers the `onERC721Received` function which emits a `ProofOfAgreementCreated` event
+
+### NFT Burning on Revocation
+
+```solidity
+// Inside DaoSign.store_revoke
+if (s.metadata.is_nft && s.signatory_policy.length == 0) _burn_token(a.attestation_id, a.schema_id);
+```
+
+When an attestation is revoked:
+1. The associated NFT is burned (if one exists)
+2. This permanently removes the token from circulation
+
+## NFT Metadata
+
+DaoSign NFTs can include metadata about the attestation they represent:
+
+1. **Name**: The schema name plus the attestation ID (e.g., "Employment Agreement #42")
+2. **Description**: Information about the attestation (e.g., parties involved, date created)
+3. **Attributes**: Additional properties like status, schema type, etc.
+
+The metadata can be set via the ERC721URIStorage functionality, though this is typically managed by applications integrating with DaoSign rather than the contract itself.
+
+## Integrating with NFT Ecosystems
+
+DaoSign's NFT implementation is compatible with standard NFT tooling:
+
+1. **Wallets**: NFTs are visible in standard wallets like MetaMask (though they cannot be transferred)
+2. **Marketplaces**: The tokens can be displayed in marketplaces, though not listed for sale
+3. **Explorers**: Block explorers can show token ownership and metadata
+4. **dApps**: Applications can query token existence and ownership
+
+## Use Cases for NFT Tokens
+
+DaoSign NFTs can serve several purposes:
+
+1. **Verification**: Quick verification of document authenticity via token ownership
+2. **Access Control**: Using token ownership to grant access to systems or resources
+3. **Visual Representation**: Displaying documents visually in wallet interfaces
+4. **On-Chain References**: Using token IDs to reference documents in other smart contracts
+5. **Status Tracking**: Monitoring document status through token existence
+
+## Customizing NFT Implementation
+
+DaoSign's token system can be extended in various ways:
+
+1. **Custom URI Generation**: Implementing dynamic URI generation for token metadata
+2. **Extended Metadata**: Adding additional metadata fields for specific use cases
+3. **Tiered Access**: Implementing different access levels for token holders
+4. **Batch Operations**: Adding support for batch minting or burning
+5. **Upgradeability**: Making the token contracts themselves upgradeable
+
+## Security Considerations
+
+The NFT implementation includes several security measures:
+
+1. **Restricted Minting/Burning**: Only authorized parties can mint or burn tokens
+2. **Non-Transferability**: Tokens cannot be transferred, preventing unauthorized ownership changes
+3. **Ownership Control**: The DaoSign contract maintains ownership of token collections
+4. **Access Control**: Proper access control prevents unauthorized operations
+5. **Separation of Concerns**: Each schema has its own token collection, preventing cross-schema issues
+
+## Implementation Examples
+
+### Minting a Token
+
+```solidity
+function _mint_token(address to, uint256 _token_id, uint256 _schema_id) private {
+    address collection = collection_by_schema[_schema_id];
+    DaoSignToken(collection).safeMint(to, _token_id, "");
+}
+```
+
+### Burning a Token
+
+```solidity
+function _burn_token(uint256 _attestation_id, uint256 _schema_id) private {
+    address collection = collection_by_schema[_schema_id];
+    DaoSignToken(collection).burn(_attestation_id);
+}
+```
+
+### Receiving a Token
+
+```solidity
+function onERC721Received(address, address, uint256 tokenId, bytes calldata) external override returns (bytes4) {
+    emit ProofOfAgreementCreated(tokenId);
+    return this.onERC721Received.selector;
+}
+```
+
+## Future Enhancements
+
+Potential future enhancements to the NFT system include:
+
+1. **Soulbound Tokens**: Formal implementation of the Soulbound Token standard when finalized
+2. **Metadata Standards**: Standardizing metadata format for better interoperability
+3. **Dynamic NFT Images**: Generating visual representations of attestations on-chain
+4. **Multi-Chain Support**: Extending token representation across multiple blockchains
+5. **Extended Functionality**: Adding features like delegation, time-locking, or conditional transfers

@@ -1,0 +1,632 @@
+---
+title: 'Signatures API'
+description: 'API reference for working with signatures and proofs in DaoSign'
+---
+
+# Signatures API
+
+This reference documents the smart contract functions and parameters for working with signatures and proofs in the DaoSign protocol.
+
+## Signature Creation
+
+### `store_pos`
+
+Creates a Proof of Signature (PoS) for an attestation.
+
+```solidity
+function store_pos(uint256 _attestation_id, bytes memory signature) external
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The ID of the attestation to sign |
+| `signature` | `bytes` | The cryptographic signature |
+
+#### Process
+
+When a signatory calls `store_pos`:
+
+1. The function verifies that the caller has not already signed the attestation
+2. It validates that the attestation exists and is not revoked
+3. It verifies the provided signature
+4. It confirms that the caller is a valid signatory for this attestation
+5. It validates the signatory against any signatory policies
+6. It stores the signature as a Proof of Signature
+7. If all required signatures are collected, it automatically creates a Proof of Agreement
+
+#### Returns
+
+This function emits a `ProofOfSignatureCreated` event. When all required signatures are collected, it may also emit a `ProofOfAgreementCreated` event.
+
+#### Example
+
+```javascript
+// Using web3.js
+// 1. Get the attestation ID to sign
+const attestationId = 123;
+
+// 2. Generate signature
+const signature = await generateSignature(attestationId, userWallet);
+
+// 3. Submit the signature
+const tx = await daoSignContract.methods.store_pos(attestationId, signature).send({ from: userAddress });
+
+// 4. Check for events in the transaction receipt
+const receipt = await web3.eth.getTransactionReceipt(tx.transactionHash);
+const posCreatedEvent = receipt.logs.find(
+  log => web3.utils.keccak256('ProofOfSignatureCreated(uint256)') === log.topics[0]
+);
+
+if (posCreatedEvent) {
+  console.log(`Successfully signed attestation ID: ${attestationId}`);
+}
+```
+
+#### Signature Generation Helper
+
+```javascript
+// Using ethers.js
+async function generateSignature(attestationId, signer) {
+  // Create the message hash
+  const messageHash = ethers.utils.solidityKeccak256(['uint256'], [attestationId]);
+  
+  // Sign the hash
+  const messageHashBytes = ethers.utils.arrayify(messageHash);
+  const signature = await signer.signMessage(messageHashBytes);
+  
+  return signature;
+}
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `AttestationAlreadySigned` | The caller has already signed this attestation |
+| `AttestationDoesNotExist` | The specified attestation does not exist |
+| `AttestationRevoked` | The attestation has been revoked |
+| `InvalidSignature` | The provided signature is invalid |
+| `InvalidSignatoryAddress` | The caller is not listed as a required signatory |
+| `InsufficientAttestations` | The caller does not meet the signatory policy requirements |
+
+## Signature Queries
+
+### `get_proof_of_signature`
+
+Retrieves all Proofs of Signature for an attestation.
+
+```solidity
+function get_proof_of_signature(uint256 _attestation_id) external view returns (ProofOfSignature[] memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The ID of the attestation |
+
+#### Returns
+
+Returns an array of `ProofOfSignature` objects.
+
+#### ProofOfSignature Structure
+
+```solidity
+struct ProofOfSignature {
+    uint256 attestation_id;     // ID of the attestation being signed
+    address creator;            // Address of the signer
+    uint32 created_at;          // Timestamp of the signature
+    bytes signature;            // The cryptographic signature
+}
+```
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+
+// Process each signature
+console.log(`Found ${signatures.length} signatures for attestation ${attestationId}`);
+signatures.forEach((sig, index) => {
+  console.log(`Signature ${index + 1}:`);
+  console.log(`  Signer: ${sig.creator}`);
+  console.log(`  Timestamp: ${new Date(sig.created_at * 1000).toLocaleString()}`);
+});
+```
+
+### `get_proof_of_agreement`
+
+Retrieves all Proofs of Agreement for an attestation.
+
+```solidity
+function get_proof_of_agreement(uint256 _attestation_id) external view returns (ProofOfAgreement[] memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The ID of the attestation |
+
+#### Returns
+
+Returns an array of `ProofOfAgreement` objects.
+
+#### ProofOfAgreement Structure
+
+```solidity
+struct ProofOfAgreement {
+    uint256 attestation_id;     // ID of the attestation
+    bytes[] signatures;         // Collection of all required signatures
+}
+```
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+const agreements = await daoSignContract.methods.get_proof_of_agreement(attestationId).call();
+
+if (agreements.length > 0) {
+  console.log(`Attestation ${attestationId} has a complete Proof of Agreement`);
+  console.log(`Agreement contains ${agreements[0].signatures.length} signatures`);
+} else {
+  console.log(`Attestation ${attestationId} does not have a complete Proof of Agreement yet`);
+}
+```
+
+## Signature Status Checking
+
+### Checking If a User Has Signed
+
+```javascript
+// Using web3.js
+async function hasUserSigned(attestationId, userAddress) {
+  try {
+    // Get all signatures for the attestation
+    const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+    
+    // Check if the user's address is in the list of signers
+    const hasSigned = signatures.some(sig => 
+      sig.creator.toLowerCase() === userAddress.toLowerCase()
+    );
+    
+    return hasSigned;
+  } catch (error) {
+    console.error(`Error checking signature status: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+### Checking Signature Completeness
+
+```javascript
+// Using web3.js
+async function isFullySigned(attestationId) {
+  try {
+    // Get the attestation details
+    const attestation = await daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+    
+    // Get all signatures
+    const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+    
+    // Check if we have the required number of signatures
+    const requiredSignatures = attestation.signatories.length;
+    const hasAllSignatures = signatures.length >= requiredSignatures;
+    
+    // Check if a Proof of Agreement exists (more definitive)
+    const agreements = await daoSignContract.methods.get_proof_of_agreement(attestationId).call();
+    const hasProofOfAgreement = agreements.length > 0;
+    
+    return {
+      requiredSignatures,
+      completedSignatures: signatures.length,
+      hasAllSignatures,
+      hasProofOfAgreement,
+      isComplete: hasProofOfAgreement && hasAllSignatures,
+      missingSignatories: hasAllSignatures ? [] : getMissingSignatories(attestation.signatories, signatures)
+    };
+  } catch (error) {
+    console.error(`Error checking signature completeness: ${error.message}`);
+    throw error;
+  }
+}
+
+// Helper function to find missing signatories
+function getMissingSignatories(requiredSignatories, completedSignatures) {
+  const signedAddresses = completedSignatures.map(sig => sig.creator.toLowerCase());
+  return requiredSignatories.filter(addr => !signedAddresses.includes(addr.toLowerCase()));
+}
+```
+
+## Signature Verification
+
+### Verifying a Signature's Authenticity
+
+```javascript
+// Using ethers.js
+async function verifySignature(attestationId, signature, signerAddress) {
+  try {
+    // Create the message hash
+    const messageHash = ethers.utils.solidityKeccak256(['uint256'], [attestationId]);
+    const messageHashBytes = ethers.utils.arrayify(messageHash);
+    
+    // Recover the signer's address from the signature
+    const recoveredAddress = ethers.utils.verifyMessage(messageHashBytes, signature);
+    
+    // Compare with the claimed signer
+    const isValidSignature = recoveredAddress.toLowerCase() === signerAddress.toLowerCase();
+    
+    return {
+      isValid: isValidSignature,
+      claimed: signerAddress,
+      recovered: recoveredAddress
+    };
+  } catch (error) {
+    console.error(`Error verifying signature: ${error.message}`);
+    return {
+      isValid: false,
+      error: error.message
+    };
+  }
+}
+```
+
+### Verifying All Signatures for an Attestation
+
+```javascript
+// Using ethers.js
+async function verifyAllSignatures(attestationId) {
+  try {
+    // Get all signatures
+    const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+    
+    // Verify each signature
+    const verificationResults = await Promise.all(signatures.map(async (sig) => {
+      const messageHash = ethers.utils.solidityKeccak256(['uint256'], [attestationId]);
+      const messageHashBytes = ethers.utils.arrayify(messageHash);
+      
+      let recoveredAddress;
+      let isValid = false;
+      
+      try {
+        recoveredAddress = ethers.utils.verifyMessage(messageHashBytes, sig.signature);
+        isValid = recoveredAddress.toLowerCase() === sig.creator.toLowerCase();
+      } catch (error) {
+        recoveredAddress = 'Error: ' + error.message;
+      }
+      
+      return {
+        signatory: sig.creator,
+        timestamp: new Date(sig.created_at * 1000).toLocaleString(),
+        isValid,
+        recoveredAddress
+      };
+    }));
+    
+    // Check overall validity
+    const allValid = verificationResults.every(result => result.isValid);
+    
+    return {
+      attestationId,
+      signatures: verificationResults,
+      allValid,
+      totalSignatures: signatures.length,
+      validSignatures: verificationResults.filter(r => r.isValid).length
+    };
+  } catch (error) {
+    console.error(`Error verifying attestation signatures: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+## Signature Policy Validation
+
+### Checking Signatory Policy Eligibility
+
+```javascript
+// Using web3.js
+async function checkSignatoryEligibility(schemaId, userAddress) {
+  try {
+    // Get the schema details
+    const schema = await daoSignContract.methods.validate_and_get_schema(schemaId).call();
+    
+    // If there are no signatory policies, anyone can sign
+    if (!schema.signatory_policy || schema.signatory_policy.length === 0) {
+      return { eligible: true, reason: 'No signatory policy restrictions' };
+    }
+    
+    // Check each policy
+    // Note: This is a simplified example as the actual policy data is encoded
+    // In a real application, you'd need to decode the policies first
+    const policies = decodeSignatoryPolicies(schema.signatory_policy);
+    
+    const policyResults = await Promise.all(policies.map(async (policy) => {
+      let result = { eligible: false, reason: '', requiredSchemas: [] };
+      
+      // Get user attestations for each required schema
+      const schemaChecks = await Promise.all(policy.required_schema_id.map(async (reqSchemaId) => {
+        const userAttestations = await daoSignContract.methods.get_user_attestations(reqSchemaId, userAddress).call();
+        const activeAttestations = userAttestations.filter(a => !a.is_revoked);
+        
+        return {
+          schemaId: reqSchemaId,
+          hasAttestation: activeAttestations.length > 0,
+          attestationCount: activeAttestations.length
+        };
+      }));
+      
+      // Apply logical operator
+      if (policy.operator === '0x01') { // AND
+        result.eligible = schemaChecks.every(check => check.hasAttestation);
+        result.reason = result.eligible 
+          ? 'User has all required attestations' 
+          : 'User is missing one or more required attestations';
+      } else if (policy.operator === '0x02') { // OR
+        result.eligible = schemaChecks.some(check => check.hasAttestation);
+        result.reason = result.eligible 
+          ? 'User has at least one required attestation' 
+          : 'User has none of the required attestations';
+      } else if (policy.operator === '0x03') { // NOT
+        result.eligible = schemaChecks.every(check => !check.hasAttestation);
+        result.reason = result.eligible 
+          ? 'User correctly has none of the excluded attestations' 
+          : 'User has one or more excluded attestations';
+      }
+      
+      result.requiredSchemas = schemaChecks;
+      return result;
+    }));
+    
+    // User is eligible if they meet ALL policies
+    const isEligible = policyResults.every(result => result.eligible);
+    
+    return {
+      eligible: isEligible,
+      policyResults,
+      overallReason: isEligible 
+        ? 'User meets all signatory policy requirements' 
+        : 'User does not meet one or more signatory policy requirements'
+    };
+  } catch (error) {
+    console.error(`Error checking signatory eligibility: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+## Proof of Agreement Creation
+
+The Proof of Agreement is automatically created when all required signatures are collected. This happens in the `store_pos` function when the last required signature is provided.
+
+### Internal Process
+
+When all signatures are collected:
+
+1. The contract creates a `ProofOfAgreement` containing all the signatures
+2. If the schema has `is_nft` enabled, a token is minted to the contract
+3. The contract emits a `ProofOfAgreementCreated` event
+4. The minted token can be used as proof of the complete agreement
+
+### NFT Agreement Token
+
+```javascript
+// Using web3.js
+async function getAgreementNFT(attestationId) {
+  try {
+    // Get the attestation details
+    const attestation = await daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+    
+    // Get the schema details
+    const schema = await daoSignContract.methods.validate_and_get_schema(attestation.schema_id).call();
+    
+    // Check if NFT is enabled
+    if (!schema.metadata.is_nft) {
+      return { hasNFT: false, reason: 'NFT not enabled for this schema' };
+    }
+    
+    // Get the NFT collection address
+    const collectionAddress = await daoSignContract.methods.collection_by_schema(attestation.schema_id).call();
+    
+    if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+      return { hasNFT: false, reason: 'NFT collection not found' };
+    }
+    
+    // Create NFT contract instance
+    const nftContract = new web3.eth.Contract(
+      DaoSignTokenABI,
+      collectionAddress
+    );
+    
+    try {
+      // Try to get the owner of the token
+      const owner = await nftContract.methods.ownerOf(attestationId).call();
+      
+      return { 
+        hasNFT: true,
+        tokenId: attestationId,
+        collectionAddress,
+        owner,
+        isAgreementNFT: owner.toLowerCase() === daoSignContract.options.address.toLowerCase()
+      };
+    } catch (error) {
+      // Token doesn't exist or has been burned
+      return { hasNFT: false, reason: 'NFT does not exist or has been burned' };
+    }
+  } catch (error) {
+    console.error(`Error checking agreement NFT: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+## Best Practices
+
+When working with signatures in DaoSign:
+
+1. **Signature Security**: Always generate signatures securely, never exposing private keys
+2. **Wallet Integration**: Integrate with secure wallet providers for signing operations
+3. **Message Clarity**: Present clear information to users about what they're signing
+4. **Error Handling**: Implement robust error handling for signature operations
+5. **Status Tracking**: Track the status of required signatures and notify users accordingly
+6. **Verification**: Verify signature authenticity when displaying or processing signatures
+7. **Gas Estimation**: Estimate gas costs for signature transactions, especially when creating a Proof of Agreement
+8. **Event Monitoring**: Listen for signature events to update your application state
+9. **Caching**: Cache signature status when appropriate to reduce blockchain queries
+10. **Policy Explanation**: Clearly explain to users why they may not be eligible to sign due to policy restrictions
+
+## Signature Workflow Example
+
+Here's a complete example of a signature workflow:
+
+```javascript
+// Using web3.js and ethers.js
+
+class SignatureWorkflow {
+  constructor(daoSignContract, web3Provider) {
+    this.daoSignContract = daoSignContract;
+    this.web3 = web3Provider;
+    this.ethers = new ethers.providers.Web3Provider(web3Provider.currentProvider);
+  }
+  
+  // Initialize signing workflow
+  async initializeWorkflow(attestationId) {
+    // Get attestation details
+    const attestation = await this.daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+    
+    // Get schema details
+    const schema = await this.daoSignContract.methods.validate_and_get_schema(attestation.schema_id).call();
+    
+    // Get existing signatures
+    const signatures = await this.daoSignContract.methods.get_proof_of_signature(attestationId).call();
+    
+    // Determine which signatories still need to sign
+    const signedAddresses = signatures.map(sig => sig.creator.toLowerCase());
+    const pendingSignatories = attestation.signatories.filter(
+      addr => !signedAddresses.includes(addr.toLowerCase())
+    );
+    
+    return {
+      attestationId,
+      schemaName: schema.metadata.name,
+      creator: attestation.creator,
+      totalSignatories: attestation.signatories.length,
+      signedCount: signatures.length,
+      pendingSignatories,
+      isComplete: signatures.length === attestation.signatories.length,
+      isRevoked: attestation.is_revoked
+    };
+  }
+  
+  // Check if user can sign
+  async canUserSign(attestationId, userAddress) {
+    try {
+      // Get attestation details
+      const attestation = await this.daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+      
+      // Check if attestation is revoked
+      if (attestation.is_revoked) {
+        return { canSign: false, reason: 'Attestation has been revoked' };
+      }
+      
+      // Check if user is a required signatory
+      const isSignatory = attestation.signatories.some(
+        addr => addr.toLowerCase() === userAddress.toLowerCase()
+      );
+      
+      if (!isSignatory) {
+        return { canSign: false, reason: 'User is not a required signatory' };
+      }
+      
+      // Check if user has already signed
+      const signatures = await this.daoSignContract.methods.get_proof_of_signature(attestationId).call();
+      const hasAlreadySigned = signatures.some(
+        sig => sig.creator.toLowerCase() === userAddress.toLowerCase()
+      );
+      
+      if (hasAlreadySigned) {
+        return { canSign: false, reason: 'User has already signed this attestation' };
+      }
+      
+      // Check signatory policy eligibility
+      const schema = await this.daoSignContract.methods.validate_and_get_schema(attestation.schema_id).call();
+      
+      if (schema.signatory_policy && schema.signatory_policy.length > 0) {
+        // Note: In a real application, you'd need to properly decode and evaluate the policies
+        const eligibility = await this.checkSignatoryEligibility(attestation.schema_id, userAddress);
+        
+        if (!eligibility.eligible) {
+          return { canSign: false, reason: 'User does not meet signatory policy requirements', details: eligibility };
+        }
+      }
+      
+      return { canSign: true };
+    } catch (error) {
+      console.error(`Error checking signing eligibility: ${error.message}`);
+      return { canSign: false, reason: `Error: ${error.message}` };
+    }
+  }
+  
+  // Sign the attestation
+  async signAttestation(attestationId, userWallet) {
+    try {
+      const userAddress = await userWallet.getAddress();
+      
+      // Check if user can sign
+      const canSign = await this.canUserSign(attestationId, userAddress);
+      if (!canSign.canSign) {
+        throw new Error(`Cannot sign: ${canSign.reason}`);
+      }
+      
+      // Generate signature
+      const messageHash = ethers.utils.solidityKeccak256(['uint256'], [attestationId]);
+      const messageHashBytes = ethers.utils.arrayify(messageHash);
+      const signature = await userWallet.signMessage(messageHashBytes);
+      
+      // Submit the signature
+      const tx = await this.daoSignContract.methods.store_pos(attestationId, signature).send({ 
+        from: userAddress 
+      });
+      
+      // Check for events in the receipt
+      const receipt = await this.web3.eth.getTransactionReceipt(tx.transactionHash);
+      
+      // Check for ProofOfSignatureCreated event
+      const posEvent = receipt.logs.find(
+        log => this.web3.utils.keccak256('ProofOfSignatureCreated(uint256)') === log.topics[0]
+      );
+      
+      // Check for ProofOfAgreementCreated event (all signatures collected)
+      const poaEvent = receipt.logs.find(
+        log => this.web3.utils.keccak256('ProofOfAgreementCreated(uint256)') === log.topics[0]
+      );
+      
+      return {
+        success: true,
+        signatureCreated: !!posEvent,
+        agreementCreated: !!poaEvent,
+        transaction: tx.transactionHash
+      };
+    } catch (error) {
+      console.error(`Error signing attestation: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  // Helper method to check signatory policy eligibility
+  async checkSignatoryEligibility(schemaId, userAddress) {
+    // Implementation depends on your policy encoding format
+    // This is a placeholder for the actual implementation
+    return { eligible: true };
+  }
+}
+```
+
+This API provides the foundation for implementing signature workflows in applications that integrate with DaoSign. By leveraging these functions and patterns, you can create secure, user-friendly experiences for creating and verifying cryptographic proofs of document signatures.

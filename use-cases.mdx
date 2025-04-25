@@ -1,0 +1,448 @@
+---
+title: 'Use Cases'
+description: 'Real-world applications of DaoSign'
+---
+
+# DaoSign Use Cases
+
+DaoSign's blockchain-based document signing and verification platform can be applied to a variety of real-world scenarios. This document outlines some of the primary use cases to help you understand how DaoSign can be implemented in different contexts.
+
+## Legal Agreements
+
+### Smart Contracts with Legal Backing
+
+**Challenge:** Organizations need legally binding agreements that are also programmable and transparent.
+
+**Solution:** DaoSign enables the creation of legal agreements that exist both as traditional legal documents and as on-chain attestations. This provides:
+
+- Legally enforceable contracts with cryptographic proof of signing
+- Immutable record of agreement terms and signatures
+- Automatic execution of certain terms through smart contract integration
+- Transparent verification of document authenticity
+
+**Example Implementation:**
+```javascript
+// Creating a legal agreement schema
+const legalAgreementSchema = {
+  metadata: {
+    name: "Service Agreement",
+    description: "Legally binding service contract",
+    attestation_type: "agreement",
+    is_nft: true,
+    is_public: false,
+    is_revokable: true,
+    expire_in: 63072000, // 2 years
+    nft_name: "Legal Contract",
+    nft_symbol: "LEGAL"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Party A Legal Name" },
+    { definition_type: "string", definition_name: "Party B Legal Name" },
+    { definition_type: "string", definition_name: "Jurisdiction" },
+    { definition_type: "string", definition_name: "Governing Law" },
+    { definition_type: "string", definition_name: "Service Description" },
+    { definition_type: "uint256", definition_name: "Effective Date" },
+    { definition_type: "uint256", definition_name: "Term Length (days)" },
+    { definition_type: "uint256", definition_name: "Payment Amount" },
+    { definition_type: "string", definition_name: "Payment Terms" },
+    { definition_type: "string", definition_name: "Termination Conditions" }
+  ],
+  signatory_policy: []
+};
+```
+
+### Non-Disclosure Agreements (NDAs)
+
+**Challenge:** Companies regularly exchange confidential information and need standardized, easily verifiable NDAs.
+
+**Solution:** DaoSign can streamline the NDA process with:
+
+- Template-based NDA creation with customizable fields
+- Blockchain verification of signing and timestamps
+- Easy verification of NDA status without contacting legal departments
+- Automatic expiration handling based on predefined timeframes
+
+## Identity and Credentials
+
+### Verified Credentials
+
+**Challenge:** Organizations need to issue and verify credentials without relying on centralized systems.
+
+**Solution:** DaoSign enables the issuance and verification of credentials with:
+
+- Tamper-proof credential issuance as attestations
+- Self-sovereign identity integration
+- Verifiable credential checks using signatory policies
+- Revocation capabilities for expired or invalid credentials
+
+**Example Implementation:**
+```javascript
+// Creating a credential verification schema
+const credentialSchema = {
+  metadata: {
+    name: "Professional Certification",
+    description: "Verified professional qualification",
+    attestation_type: "certification",
+    is_nft: true,
+    is_public: false,
+    is_revokable: true,
+    expire_in: 31536000, // 1 year validity
+    nft_name: "Professional Cert",
+    nft_symbol: "CERT"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Recipient Name" },
+    { definition_type: "string", definition_name: "Certification Type" },
+    { definition_type: "string", definition_name: "Issuing Authority" },
+    { definition_type: "string", definition_name: "Certification ID" },
+    { definition_type: "uint256", definition_name: "Issue Date" },
+    { definition_type: "uint256", definition_name: "Valid Until" },
+    { definition_type: "string", definition_name: "Verification URL" }
+  ],
+  signatory_policy: []
+};
+```
+
+### KYC/AML Attestations
+
+**Challenge:** Financial services need verified KYC/AML data that respects privacy while meeting regulatory requirements.
+
+**Solution:** DaoSign provides a framework for KYC that:
+
+- Stores verification status without exposing personal data
+- Creates attestations of completed KYC by authorized verifiers
+- Allows controlled sharing of verification status through signatory policies
+- Enables seamless verification across multiple services
+
+## DAO Governance
+
+### Verified DAO Membership
+
+**Challenge:** DAOs need to ensure participating members have met specific criteria.
+
+**Solution:** DaoSign can verify DAO membership with:
+
+- Attestations of membership status
+- Policy-based access to governance functions
+- Tiered membership verification
+- Transparent record of membership changes
+
+**Example Implementation:**
+```javascript
+// Creating a DAO membership schema with verification requirements
+const daoMembershipSchema = {
+  metadata: {
+    name: "DAO Membership",
+    description: "Verified DAO member status",
+    attestation_type: "identity",
+    is_nft: true,
+    is_public: false,
+    is_revokable: true,
+    expire_in: 15768000, // 6 months
+    nft_name: "DAO Membership",
+    nft_symbol: "DAOM"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Member Name/Handle" },
+    { definition_type: "address", definition_name: "Member Address" },
+    { definition_type: "string", definition_name: "Membership Level" },
+    { definition_type: "uint256", definition_name: "Join Date" },
+    { definition_type: "uint256", definition_name: "Contribution Score" }
+  ],
+  // Require KYC verification to become a member
+  signatory_policy: [
+    {
+      operator: "0x01", // AND
+      signatory_description: "KYC Verification Required",
+      required_schema_id: [5] // ID of KYC verification schema
+    }
+  ]
+};
+```
+
+### Proposal Signing and Ratification
+
+**Challenge:** DAOs need formal procedures for proposing and ratifying decisions.
+
+**Solution:** DaoSign enables structured governance with:
+
+- Formalized proposal templates as schemas
+- Multi-signature approval processes
+- Permanent record of governance decisions
+- Integration with on-chain execution of approved proposals
+
+## Business Operations
+
+### Supplier Agreements
+
+**Challenge:** Companies need to maintain and verify complex supply chain agreements.
+
+**Solution:** DaoSign can streamline supplier relationships with:
+
+- Standardized supplier agreement attestations
+- Verification of authorized signatories
+- Immutable audit trail of agreement changes
+- Integration with procurement and payment systems
+
+**Example Implementation:**
+```javascript
+// Creating a supplier agreement schema
+const supplierAgreementSchema = {
+  metadata: {
+    name: "Supplier Agreement",
+    description: "Standard terms for supplier relationships",
+    attestation_type: "agreement",
+    is_nft: true,
+    is_public: false,
+    is_revokable: true,
+    expire_in: 31536000, // 1 year
+    nft_name: "Supplier Contract",
+    nft_symbol: "SUPC"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Supplier Name" },
+    { definition_type: "string", definition_name: "Supplier ID" },
+    { definition_type: "string", definition_name: "Product/Service Category" },
+    { definition_type: "uint256", definition_name: "Effective Date" },
+    { definition_type: "uint256", definition_name: "Payment Terms (days)" },
+    { definition_type: "string", definition_name: "Quality Standards" },
+    { definition_type: "string", definition_name: "Delivery Terms" },
+    { definition_type: "string", definition_name: "Warranty Terms" }
+  ],
+  // Require supplier to have business verification
+  signatory_policy: [
+    {
+      operator: "0x01", // AND
+      signatory_description: "Verified Business",
+      required_schema_id: [7] // ID of business verification schema
+    }
+  ]
+};
+```
+
+### Employee Onboarding
+
+**Challenge:** HR departments need streamlined onboarding with proper documentation.
+
+**Solution:** DaoSign can improve employee onboarding with:
+
+- Digital employment contracts as attestations
+- Automated verification of required documentation
+- Clear tracking of document completion status
+- Secure storage of employment terms with controlled access
+
+## Real Estate
+
+### Property Transactions
+
+**Challenge:** Real estate transactions involve multiple parties and complex documentation.
+
+**Solution:** DaoSign can enhance property transactions with:
+
+- Multi-party signing workflows for purchase agreements
+- Verification of required party credentials (agents, notaries)
+- Permanent record of transaction documents
+- Integration with property registries
+
+**Example Implementation:**
+```javascript
+// Creating a property purchase agreement schema
+const propertyPurchaseSchema = {
+  metadata: {
+    name: "Property Purchase Agreement",
+    description: "Legal agreement for real estate transactions",
+    attestation_type: "agreement",
+    is_nft: true,
+    is_public: false,
+    is_revokable: true,
+    expire_in: 7776000, // 90 days
+    nft_name: "Property Contract",
+    nft_symbol: "PROP"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Property Address" },
+    { definition_type: "string", definition_name: "Property Description" },
+    { definition_type: "string", definition_name: "Seller Name" },
+    { definition_type: "string", definition_name: "Buyer Name" },
+    { definition_type: "uint256", definition_name: "Purchase Price" },
+    { definition_type: "uint256", definition_name: "Deposit Amount" },
+    { definition_type: "uint256", definition_name: "Closing Date" },
+    { definition_type: "string", definition_name: "Contingencies" },
+    { definition_type: "string", definition_name: "Inclusions/Exclusions" },
+    { definition_type: "string", definition_name: "Special Conditions" }
+  ],
+  // Require real estate license verification for agents
+  signatory_policy: [
+    {
+      operator: "0x01", // AND
+      signatory_description: "Licensed Real Estate Agent",
+      required_schema_id: [12] // ID of real estate license schema
+    }
+  ]
+};
+```
+
+### Rental Agreements
+
+**Challenge:** Rental markets need standardized, verifiable lease agreements.
+
+**Solution:** DaoSign provides benefits for rental management:
+
+- Template-based lease creation
+- Digital signatures with timestamp proof
+- Integration with property management systems
+- Automatic notifications for renewal or termination dates
+
+## Healthcare
+
+### Patient Consent Forms
+
+**Challenge:** Healthcare providers need secure, compliant patient consent management.
+
+**Solution:** DaoSign can improve consent management with:
+
+- Standardized consent form templates
+- Verifiable patient signatures
+- Audit trail for regulatory compliance
+- Controlled access to sensitive documents
+
+**Example Implementation:**
+```javascript
+// Creating a patient consent schema
+const patientConsentSchema = {
+  metadata: {
+    name: "Medical Procedure Consent",
+    description: "Patient informed consent for procedures",
+    attestation_type: "agreement",
+    is_nft: false, // No NFT for privacy reasons
+    is_public: false,
+    is_revokable: true,
+    expire_in: 2592000, // 30 days
+    nft_name: "",
+    nft_symbol: ""
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Patient Name" },
+    { definition_type: "string", definition_name: "Patient ID" },
+    { definition_type: "string", definition_name: "Healthcare Provider" },
+    { definition_type: "string", definition_name: "Procedure Name" },
+    { definition_type: "string", definition_name: "Procedure Description" },
+    { definition_type: "string", definition_name: "Risks Disclosed" },
+    { definition_type: "string", definition_name: "Alternative Options Discussed" },
+    { definition_type: "uint256", definition_name: "Consent Date" }
+  ],
+  // Require healthcare provider verification
+  signatory_policy: [
+    {
+      operator: "0x01", // AND
+      signatory_description: "Licensed Healthcare Provider",
+      required_schema_id: [15] // ID of medical license schema
+    }
+  ]
+};
+```
+
+### Research Collaboration Agreements
+
+**Challenge:** Medical research involves complex collaboration agreements across institutions.
+
+**Solution:** DaoSign can facilitate research partnerships with:
+
+- Standardized collaboration agreement templates
+- Multi-institution signing workflows
+- Verification of researcher credentials
+- Transparent record of agreement terms and changes
+
+## Education
+
+### Academic Credentials
+
+**Challenge:** Educational institutions need to issue verifiable certificates that can't be forged.
+
+**Solution:** DaoSign enables secure credential issuance with:
+
+- Tamper-proof digital certificates as attestations
+- Easy verification by employers or other institutions
+- Student-controlled sharing of credentials
+- Integration with academic record systems
+
+**Example Implementation:**
+```javascript
+// Creating an academic credential schema
+const academicCredentialSchema = {
+  metadata: {
+    name: "Academic Degree",
+    description: "Official academic qualification",
+    attestation_type: "certification",
+    is_nft: true,
+    is_public: false,
+    is_revokable: true,
+    expire_in: 0, // Never expires
+    nft_name: "Academic Credential",
+    nft_symbol: "ACAD"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Student Name" },
+    { definition_type: "string", definition_name: "Student ID" },
+    { definition_type: "string", definition_name: "Institution Name" },
+    { definition_type: "string", definition_name: "Degree Title" },
+    { definition_type: "string", definition_name: "Field of Study" },
+    { definition_type: "string", definition_name: "Degree Classification/GPA" },
+    { definition_type: "uint256", definition_name: "Date Awarded" },
+    { definition_type: "string", definition_name: "Certificate ID" }
+  ],
+  // Require institutional authority
+  signatory_policy: [
+    {
+      operator: "0x01", // AND
+      signatory_description: "Authorized Academic Institution",
+      required_schema_id: [18] // ID of academic institution verification schema
+    }
+  ]
+};
+```
+
+### Training Certifications
+
+**Challenge:** Professional training providers need to issue verifiable certificates of completion.
+
+**Solution:** DaoSign provides a framework for training certification with:
+
+- Standardized certification templates
+- Verifiable completion records
+- Integration with training management systems
+- Easy sharing with employers or clients
+
+## Implementation Recommendations
+
+When implementing DaoSign for these use cases, consider the following recommendations:
+
+### 1. Start with Simple Schemas
+
+Begin with straightforward document templates and gradually increase complexity as users become familiar with the system.
+
+### 2. Define Clear Signature Policies
+
+Carefully define who can sign different document types and what prerequisites might be required through signatory policies.
+
+### 3. Consider Privacy Implications
+
+For sensitive documents, carefully consider what data should be included in on-chain attestations versus referenced off-chain.
+
+### 4. Create a User-Friendly Interface
+
+Develop intuitive interfaces that abstract blockchain complexity while highlighting the benefits of verifiable documents.
+
+### 5. Build Interoperability
+
+Design schemas with interoperability in mind so that attestations can be used across different systems and workflows.
+
+### 6. Implement Proper Authorization
+
+Use signatory policies to ensure only authorized individuals can create, sign, or verify specific document types.
+
+## Conclusion
+
+DaoSign provides a flexible framework for a wide range of document signing and verification needs. By leveraging blockchain technology, it offers enhanced security, transparency, and efficiency compared to traditional document systems.
+
+When implementing these use cases, focus on the specific requirements of your industry and users, creating schemas that balance detail, usability, and privacy considerations. Start with the most impactful workflows and gradually expand as adoption increases.

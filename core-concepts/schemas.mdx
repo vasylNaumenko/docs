@@ -1,0 +1,136 @@
+---
+title: 'Schemas'
+description: 'Document templates with defined structure'
+---
+
+# Schemas
+
+Schemas are the foundation of the DaoSign protocol, serving as templates for creating documents with predefined structures. They define the data fields, signing requirements, and lifecycle options for documents.
+
+## What is a Schema?
+
+A schema is a blueprint that defines:
+
+- **Structure**: What fields and data types a document contains
+- **Metadata**: Information about the document template itself
+- **Signing Policies**: Rules about who can sign the document
+- **Lifecycle Rules**: Expiration, revocation, and other document behavior
+
+## Schema Structure
+
+A schema in DaoSign consists of several key components:
+
+### Schema Metadata
+
+The metadata provides general information about the schema:
+
+```typescript
+interface SchemaMetadata {
+  name: string;                // Name of the schema
+  description: string;         // Description of the schema 
+  attestation_type: string;    // Type (e.g., "agreement", "identity", "authority")
+  nft_name: string;            // Name for NFT collection (if enabled)
+  nft_symbol: string;          // Symbol for NFT collection (if enabled)
+  creator: address;            // Creator's wallet address
+  created_at: uint32;          // Creation timestamp
+  is_nft: boolean;             // Whether attestations can be tokenized as NFTs
+  is_public: boolean;          // Whether anyone can create attestations from this schema
+  is_revokable: boolean;       // Whether attestations can be revoked
+  expire_in: uint32;           // Expiration period in seconds (0 for never)
+}
+```
+
+### Schema Definition
+
+The definition specifies the fields and data types for the document:
+
+```typescript
+interface SchemaDefinition {
+  definition_type: string;     // Data type of the field (string, boolean, uint256, etc.)
+  definition_name: string;     // Name of the field
+}
+```
+
+DaoSign supports the following data types:
+- `string`: Text data
+- `boolean`: True/false values
+- `uint256`: Unsigned integers
+- `bytes`: Raw binary data
+- `bytes32`: Fixed-length binary data
+- `address`: Ethereum addresses
+
+### Signatory Policy
+
+The signatory policy defines the rules for who can sign attestations:
+
+```typescript
+interface SignatoryPolicy {
+  operator: bytes1;            // Logical operator (AND, OR, NOT)
+  signatory_description: string; // Description of the policy
+  required_schema_id: uint256[]; // Schema IDs that signatories must have attestations for
+}
+```
+
+The policy can use logical operators to combine requirements:
+- `0x01`: AND - Signatory must have attestations for ALL required schemas
+- `0x02`: OR - Signatory must have attestations for AT LEAST ONE required schema
+- `0x03`: NOT - Signatory must NOT have attestations for ANY required schema
+
+## Schema Privacy and Access
+
+Schemas can be:
+
+- **Public**: Anyone can create attestations based on the schema
+- **Private**: Only the schema creator can create attestations
+
+## Schema Lifecycle
+
+Schemas may include lifecycle rules:
+
+- **Expiration**: Schemas can have an expiration period after which new attestations cannot be created
+- **Tokenization**: Schemas can be configured to generate NFTs for attestations
+
+## Creating a Schema
+
+To create a schema, you need to:
+
+1. Define the schema structure with fields and data types
+2. Set metadata including name, description, and options
+3. Define any signatory policies
+4. Submit the schema to the blockchain
+
+Example:
+```javascript
+const employmentAgreement = {
+  metadata: {
+    name: "Employment Agreement",
+    description: "Standard employment contract",
+    attestation_type: "agreement",
+    is_public: true,
+    is_revokable: true,
+    expire_in: 0, // Never expires
+    is_nft: true,
+    nft_name: "Employment Contract",
+    nft_symbol: "EMPC"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Employer Name" },
+    { definition_type: "string", definition_name: "Employee Name" },
+    { definition_type: "uint256", definition_name: "Start Date" },
+    { definition_type: "uint256", definition_name: "Salary" },
+    { definition_type: "string", definition_name: "Position" }
+  ],
+  signatory_policy: []
+};
+
+// Create the schema on blockchain
+const schemaId = await daoSign.createSchema(employmentAgreement);
+```
+
+## Schema Best Practices
+
+- **Keep it simple**: Only include fields that are necessary
+- **Use descriptive names**: Field names should be clear and self-explanatory
+- **Consider privacy**: Don't include sensitive data directly in schemas
+- **Plan for evolution**: Consider how your schema might need to change over time
+- **Test thoroughly**: Validate your schema with test attestations before wider use

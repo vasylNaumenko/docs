@@ -1,0 +1,227 @@
+---
+title: 'Creating a Schema'
+description: 'Step-by-step guide to create a document schema'
+---
+
+# Creating a Schema
+
+This tutorial walks you through the process of creating a document schema in DaoSign. A schema serves as a template for documents that will be created, signed, and verified on the blockchain.
+
+## Prerequisites
+
+- An Ethereum wallet (like MetaMask)
+- The DaoSign client library installed
+- Connection to an Ethereum network
+
+## Step 1: Define Schema Metadata
+
+First, you need to define the basic information about your schema:
+
+```javascript
+const schemaMetadata = {
+  name: "Service Agreement", 
+  description: "Standard service agreement between provider and client",
+  attestation_type: "agreement",
+  creator: "0xYourAddress", // Your wallet address
+  is_public: true,          // Anyone can create attestations
+  is_revokable: true,       // Attestations can be revoked
+  expire_in: 31536000,      // Expires in 1 year (in seconds)
+  
+  // NFT-related fields (optional)
+  is_nft: true,
+  nft_name: "Service Agreement Token",
+  nft_symbol: "SAT"
+};
+```
+
+## Step 2: Define Schema Fields
+
+Next, define the fields that will be part of your document:
+
+```javascript
+const schemaDefinition = [
+  {
+    definition_type: "string",
+    definition_name: "Service Provider"
+  },
+  {
+    definition_type: "string",
+    definition_name: "Client Name"
+  },
+  {
+    definition_type: "string",
+    definition_name: "Service Description"
+  },
+  {
+    definition_type: "uint256",
+    definition_name: "Contract Value"
+  },
+  {
+    definition_type: "uint256",
+    definition_name: "Start Date"
+  },
+  {
+    definition_type: "uint256",
+    definition_name: "End Date"
+  }
+];
+```
+
+## Step 3: Define Signatory Policy (Optional)
+
+If you want to enforce specific requirements for signatories, you can define a signatory policy:
+
+```javascript
+// Example: Signatories must have a KYC attestation
+const signatoryPolicy = [
+  {
+    operator: "0x01", // AND
+    signatory_description: "Must have KYC verification",
+    required_schema_id: [5] // Schema ID for KYC verification
+  }
+];
+
+// Or, for no special requirements:
+const signatoryPolicy = [];
+```
+
+## Step 4: Combine Everything into a Schema Object
+
+Now, combine all parts into a complete schema object:
+
+```javascript
+const serviceAgreementSchema = {
+  metadata: schemaMetadata,
+  schema_definition: schemaDefinition,
+  signatory_policy: signatoryPolicy
+};
+```
+
+## Step 5: Create the Schema on the Blockchain
+
+Initialize the DaoSign client and create the schema:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+// Connect to the network
+const daoSign = new DaoSignClient({
+  provider: window.ethereum,
+  network: 'goerli' // Or your preferred network
+});
+
+// Connect wallet
+await daoSign.connect();
+
+// Create the schema
+try {
+  const schemaId = await daoSign.createSchema(serviceAgreementSchema);
+  console.log(`Schema created successfully with ID: ${schemaId}`);
+  
+  // Optional: Save the schemaId for future reference
+  localStorage.setItem('serviceAgreementSchemaId', schemaId);
+} catch (error) {
+  console.error('Error creating schema:', error);
+}
+```
+
+## Step 6: Verify Schema Creation
+
+After creating the schema, you can verify it was created correctly:
+
+```javascript
+// Get the schema details
+const schema = await daoSign.getSchema(schemaId);
+console.log('Schema details:', schema);
+
+// Verify all fields are correct
+console.log('Schema name:', schema.metadata.name);
+console.log('Fields:', schema.schema_definition.map(field => field.definition_name));
+```
+
+## Complete Example
+
+Here's a complete example for creating a simple NDA schema:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+async function createNDASchema() {
+  // Initialize client
+  const daoSign = new DaoSignClient({
+    provider: window.ethereum,
+    network: 'goerli'
+  });
+  
+  // Connect wallet
+  await daoSign.connect();
+  
+  // Define NDA schema
+  const ndaSchema = {
+    metadata: {
+      name: "Non-Disclosure Agreement",
+      description: "Confidentiality agreement between parties",
+      attestation_type: "agreement",
+      creator: await daoSign.getAddress(), // Current connected address
+      is_public: true,
+      is_revokable: true,
+      expire_in: 63072000, // 2 years
+      is_nft: true,
+      nft_name: "NDA Token",
+      nft_symbol: "NDAT"
+    },
+    schema_definition: [
+      {
+        definition_type: "string",
+        definition_name: "Disclosing Party"
+      },
+      {
+        definition_type: "string",
+        definition_name: "Receiving Party"
+      },
+      {
+        definition_type: "string",
+        definition_name: "Purpose of Disclosure"
+      },
+      {
+        definition_type: "string",
+        definition_name: "Definition of Confidential Information"
+      },
+      {
+        definition_type: "uint256",
+        definition_name: "Effective Date"
+      },
+      {
+        definition_type: "uint256",
+        definition_name: "Term (months)"
+      }
+    ],
+    signatory_policy: []
+  };
+  
+  // Create schema
+  try {
+    const schemaId = await daoSign.createSchema(ndaSchema);
+    console.log(`NDA Schema created with ID: ${schemaId}`);
+    return schemaId;
+  } catch (error) {
+    console.error('Error creating NDA schema:', error);
+    throw error;
+  }
+}
+
+// Call the function
+createNDASchema()
+  .then(schemaId => console.log('Success! Schema ID:', schemaId))
+  .catch(error => console.error('Failed:', error));
+```
+
+## Next Steps
+
+Now that you've created a schema, you can:
+
+1. [Create attestations](/tutorials/creating-attestation) based on this schema
+2. Share the schema ID with others who need to create attestations
+3. Update your application to reference this schema ID
+
+Remember, schemas are immutable once created. If you need to make changes, you'll need to create a new schema version.

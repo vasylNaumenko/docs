@@ -1,0 +1,667 @@
+---
+title: 'Tokens API'
+description: 'API reference for working with NFT tokens in DaoSign'
+---
+
+# Tokens API
+
+This reference documents the smart contract functions and parameters for working with NFT tokens in the DaoSign protocol. DaoSign uses non-transferable ERC-721 tokens to represent attestations and proofs of agreement.
+
+## Token Overview
+
+DaoSign's token system consists of:
+
+1. **DaoSignTokenFactory**: A factory contract that deploys NFT collections for schemas
+2. **DaoSignToken**: Non-transferable ERC-721 tokens that represent attestations
+
+## Token Factory
+
+### DaoSignTokenFactory Contract
+
+The `DaoSignTokenFactory` contract is responsible for deploying new ERC-721 token collections for schemas that have the `is_nft` flag enabled.
+
+```solidity
+contract DaoSignTokenFactory {
+    function deploy(address owner, string memory name, string memory symbol) external returns (address);
+}
+```
+
+### Factory Address
+
+```solidity
+function daosign_factory() external view returns (address)
+```
+
+This function in the DaoSign contract returns the address of the DaoSignTokenFactory contract.
+
+#### Example
+
+```javascript
+// Using web3.js
+const factoryAddress = await daoSignContract.methods.daosign_factory().call();
+console.log(`DaoSignTokenFactory address: ${factoryAddress}`);
+```
+
+## NFT Collection Management
+
+### Collection by Schema
+
+```solidity
+function collection_by_schema(uint256 schemaId) external view returns (address)
+```
+
+This function returns the address of the NFT collection associated with a schema.
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `schemaId` | `uint256` | The ID of the schema |
+
+#### Returns
+
+Returns an `address` representing the NFT collection contract for the schema, or the zero address if no collection exists.
+
+#### Example
+
+```javascript
+// Using web3.js
+const schemaId = 42;
+const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+
+if (collectionAddress === '0x0000000000000000000000000000000000000000') {
+  console.log('No NFT collection for this schema');
+} else {
+  console.log(`NFT collection address: ${collectionAddress}`);
+}
+```
+
+## NFT Token Operations
+
+### DaoSignToken Contract
+
+The `DaoSignToken` contract implements a non-transferable ERC-721 token with specialized minting and burning functions.
+
+```solidity
+contract DaoSignToken is ERC721, ERC721URIStorage, Ownable {
+    function safeMint(address to, uint256 tokenId, bytes memory data) public;
+    function burn(uint256 tokenId) public;
+    function tokenURI(uint256 tokenId) public view override returns (string memory);
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId, uint256 batchSize) internal override;
+}
+```
+
+NFT tokens in DaoSign have these key characteristics:
+
+1. **Non-Transferability**: Tokens cannot be transferred between addresses (only minted and burned)
+2. **Restricted Access**: Only the DaoSign contract can mint and burn tokens
+3. **Metadata Support**: Tokens support the standard `tokenURI` function for metadata
+
+### Token Minting
+
+While direct token minting is not exposed through the DaoSign API, tokens are automatically minted in two scenarios:
+
+1. When an attestation is created (for schemas with no signatories)
+2. When all signatures are collected for an attestation
+
+#### Internal Minting Process
+
+```solidity
+function _mint_token(address to, uint256 _token_id, uint256 _schema_id) private {
+    address collection = collection_by_schema[_schema_id];
+    DaoSignToken(collection).safeMint(to, _token_id, "");
+}
+```
+
+This internal function is called by the DaoSign contract when:
+- An attestation is created with no required signatories (token minted to recipient)
+- All required signatures are collected (token minted to DaoSign contract)
+
+### Token Burning
+
+Similarly, token burning is not directly exposed but happens automatically when an attestation is revoked.
+
+#### Internal Burning Process
+
+```solidity
+function _burn_token(uint256 _attestation_id, uint256 _schema_id) private {
+    address collection = collection_by_schema[_schema_id];
+    DaoSignToken(collection).burn(_attestation_id);
+}
+```
+
+This internal function is called by the DaoSign contract when an attestation is revoked.
+
+## Token Event Handling
+
+### onERC721Received
+
+```solidity
+function onERC721Received(address, address, uint256 tokenId, bytes calldata) external override returns (bytes4)
+```
+
+This function is called when the DaoSign contract receives an NFT token. It emits a `ProofOfAgreementCreated` event for the associated attestation.
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tokenId` | `uint256` | The ID of the token (same as attestation ID) |
+
+#### Returns
+
+Returns the function selector to confirm receipt.
+
+#### Example
+
+This function is called automatically during the token minting process when all signatures are collected.
+
+## Working with NFT Tokens
+
+### Checking Token Existence
+
+```javascript
+// Using web3.js
+async function checkTokenExistence(schemaId, attestationId) {
+  try {
+    // Get the NFT collection address
+    const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+    
+    if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+      return { exists: false, reason: 'No NFT collection for this schema' };
+    }
+    
+    // Create NFT contract instance
+    const nftContract = new web3.eth.Contract(
+      DaoSignTokenABI,
+      collectionAddress
+    );
+    
+    try {
+      // Try to get the owner of the token
+      const owner = await nftContract.methods.ownerOf(attestationId).call();
+      
+      return { 
+        exists: true,
+        tokenId: attestationId,
+        collectionAddress,
+        owner
+      };
+    } catch (error) {
+      // Token doesn't exist or has been burned
+      return { exists: false, reason: 'Token does not exist or has been burned' };
+    }
+  } catch (error) {
+    console.error(`Error checking token existence: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+### Getting Token Metadata
+
+```javascript
+// Using web3.js
+async function getTokenMetadata(schemaId, attestationId) {
+  try {
+    // Get the NFT collection address
+    const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+    
+    if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+      throw new Error('No NFT collection for this schema');
+    }
+    
+    // Create NFT contract instance
+    const nftContract = new web3.eth.Contract(
+      DaoSignTokenABI,
+      collectionAddress
+    );
+    
+    try {
+      // Get the token URI
+      const tokenURI = await nftContract.methods.tokenURI(attestationId).call();
+      
+      // Fetch metadata from the URI
+      // Note: This assumes the URI is accessible. In many cases, you'd need to implement
+      // the metadata server separately or use IPFS/Arweave for decentralized storage
+      let metadata;
+      if (tokenURI.startsWith('http')) {
+        const response = await fetch(tokenURI);
+        metadata = await response.json();
+      } else if (tokenURI.startsWith('data:application/json;base64,')) {
+        const base64Data = tokenURI.replace('data:application/json;base64,', '');
+        const jsonString = atob(base64Data);
+        metadata = JSON.parse(jsonString);
+      } else {
+        metadata = { note: 'Metadata cannot be automatically parsed from this URI format' };
+      }
+      
+      return { 
+        tokenId: attestationId,
+        collectionAddress,
+        tokenURI,
+        metadata
+      };
+    } catch (error) {
+      throw new Error(`Failed to get token metadata: ${error.message}`);
+    }
+  } catch (error) {
+    console.error(`Error getting token metadata: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+### Getting All Tokens for a Schema
+
+```javascript
+// Using web3.js
+async function getSchemaTokens(schemaId) {
+  try {
+    // Get the NFT collection address
+    const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+    
+    if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+      return { tokens: [], reason: 'No NFT collection for this schema' };
+    }
+    
+    // Create NFT contract instance
+    const nftContract = new web3.eth.Contract(
+      DaoSignTokenABI,
+      collectionAddress
+    );
+    
+    // Get the total supply of tokens
+    // Note: Standard ERC-721 doesn't have a built-in way to enumerate all tokens
+    // This is a simplified example assuming the contract has a totalSupply function
+    // In practice, you would need to track token IDs through events or other means
+    
+    // Alternative approach: Get attestation IDs for the schema and check each one
+    // Get current attestation counter
+    const nextAttestationId = await daoSignContract.methods.attestation_id().call();
+    const tokens = [];
+    
+    // Loop through all possible attestation IDs
+    // Note: This is not efficient for large numbers of attestations
+    // In a production system, you'd use events or an indexer
+    for (let i = 0; i < nextAttestationId; i++) {
+      try {
+        // Try to get the attestation
+        const attestation = await daoSignContract.methods.validate_and_get_attestation(i).call();
+        
+        // Check if this attestation belongs to our schema
+        if (attestation.schema_id == schemaId) {
+          // Check if the token exists
+          try {
+            const owner = await nftContract.methods.ownerOf(i).call();
+            tokens.push({
+              tokenId: i,
+              attestationId: i,
+              owner
+            });
+          } catch (error) {
+            // Token doesn't exist or has been burned
+            // Skip this token
+          }
+        }
+      } catch (error) {
+        // Attestation doesn't exist or other error
+        // Skip this attestation ID
+      }
+    }
+    
+    return { tokens };
+  } catch (error) {
+    console.error(`Error getting schema tokens: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+### Getting All User Tokens
+
+```javascript
+// Using web3.js
+async function getUserTokens(userAddress) {
+  try {
+    // Get the schemas with NFT enabled
+    const nextSchemaId = await daoSignContract.methods.schema_id().call();
+    const tokens = [];
+    
+    // Loop through all schemas
+    for (let schemaId = 0; schemaId < nextSchemaId; schemaId++) {
+      try {
+        // Get schema details
+        const schema = await daoSignContract.methods.validate_and_get_schema(schemaId).call();
+        
+        // Check if NFT is enabled
+        if (schema.metadata.is_nft) {
+          // Get the NFT collection address
+          const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+          
+          if (collectionAddress && collectionAddress !== '0x0000000000000000000000000000000000000000') {
+            // Create NFT contract instance
+            const nftContract = new web3.eth.Contract(
+              DaoSignTokenABI,
+              collectionAddress
+            );
+            
+            // Get user attestations for this schema
+            const attestations = await daoSignContract.methods.get_user_attestations(schemaId, userAddress).call();
+            
+            // Check each attestation for a token
+            for (const attestation of attestations) {
+              if (!attestation.is_revoked) {
+                try {
+                  // Check if token exists and user is the owner
+                  const owner = await nftContract.methods.ownerOf(attestation.attestation_id).call();
+                  
+                  if (owner.toLowerCase() === userAddress.toLowerCase()) {
+                    tokens.push({
+                      tokenId: attestation.attestation_id,
+                      schemaId: attestation.schema_id,
+                      schemaName: schema.metadata.name,
+                      collectionAddress,
+                      attestationId: attestation.attestation_id
+                    });
+                  }
+                } catch (error) {
+                  // Token doesn't exist or has been burned
+                  // Skip this token
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        // Schema doesn't exist or other error
+        // Skip this schema
+      }
+    }
+    
+    return { tokens };
+  } catch (error) {
+    console.error(`Error getting user tokens: ${error.message}`);
+    throw error;
+  }
+}
+```
+
+## Token Metadata Server
+
+DaoSign doesn't include a built-in metadata server, but you can implement one to provide rich metadata for your tokens. Here's an example of a simple Express.js server:
+
+```javascript
+const express = require('express');
+const Web3 = require('web3');
+const app = express();
+const port = 3000;
+
+// Initialize Web3
+const web3 = new Web3('https://goerli.infura.io/v3/YOUR_INFURA_KEY');
+const daoSignContract = new web3.eth.Contract(DaoSignABI, DAOSIGN_ADDRESS);
+
+// Endpoint for token metadata
+app.get('/api/metadata/:schemaId/:tokenId', async (req, res) => {
+  try {
+    const { schemaId, tokenId } = req.params;
+    
+    // Get schema details
+    const schema = await daoSignContract.methods.validate_and_get_schema(schemaId).call();
+    
+    // Get attestation details
+    const attestation = await daoSignContract.methods.validate_and_get_attestation(tokenId).call();
+    
+    // Check if attestation exists and matches schema
+    if (attestation.schema_id != schemaId) {
+      return res.status(404).json({ error: 'Token not found or schema mismatch' });
+    }
+    
+    // Get proof of agreement
+    const agreements = await daoSignContract.methods.get_proof_of_agreement(tokenId).call();
+    
+    // Build metadata
+    const metadata = {
+      name: `${schema.metadata.name} #${tokenId}`,
+      description: `${schema.metadata.description} - Created by ${attestation.creator}`,
+      image: `https://your-server.com/api/image/${schemaId}/${tokenId}`, // URL to an image
+      external_url: `https://your-app.com/attestation/${tokenId}`,
+      attributes: [
+        {
+          trait_type: 'Schema',
+          value: schema.metadata.name
+        },
+        {
+          trait_type: 'Created',
+          value: new Date(attestation.created_at * 1000).toISOString().split('T')[0]
+        },
+        {
+          trait_type: 'Status',
+          value: attestation.is_revoked ? 'Revoked' : 'Active'
+        },
+        {
+          trait_type: 'Fully Signed',
+          value: agreements.length > 0 ? 'Yes' : 'No'
+        }
+      ]
+    };
+    
+    // Add attestation data as attributes
+    // Note: This would require decoding the attestation results
+    const attestationResults = decodeAttestationResults(attestation.attestation_result);
+    for (const result of attestationResults) {
+      metadata.attributes.push({
+        trait_type: result.name,
+        value: result.value
+      });
+    }
+    
+    res.json(metadata);
+  } catch (error) {
+    console.error('Error generating metadata:', error);
+    res.status(500).json({ error: 'Failed to generate metadata' });
+  }
+});
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Metadata server listening at http://localhost:${port}`);
+});
+
+// Helper function (implementation depends on your encoding format)
+function decodeAttestationResults(encodedResults) {
+  // Decode the encoded attestation results
+  // Return an array of { name, value } objects
+  return [];
+}
+```
+
+## Best Practices
+
+When working with NFT tokens in DaoSign:
+
+1. **Metadata Server**: Implement a reliable metadata server for token attributes and images
+2. **Token Verification**: Always verify token ownership when providing token-gated access
+3. **Event Tracking**: Listen for token-related events to update application state
+4. **Wallet Integration**: Ensure your application works with popular NFT-compatible wallets
+5. **Token Revocation**: Handle token burning (attestation revocation) gracefully in your UI
+6. **Collection Management**: Track token collections by schema for easier querying
+7. **Display Guidelines**: Provide clear visual indicators for token status (revoked, etc.)
+8. **Error Handling**: Implement robust error handling for token operations
+9. **Gas Estimation**: Estimate gas costs for token-related transactions
+10. **Backup Access**: Do not rely solely on token ownership for critical access
+
+## Token Integration Examples
+
+### Token-Gated Access
+
+```javascript
+// Using web3.js
+async function checkTokenGatedAccess(userAddress, requiredSchemaId) {
+  try {
+    // Get the NFT collection address
+    const collectionAddress = await daoSignContract.methods.collection_by_schema(requiredSchemaId).call();
+    
+    if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+      return { hasAccess: false, reason: 'No NFT collection for this schema' };
+    }
+    
+    // Create NFT contract instance
+    const nftContract = new web3.eth.Contract(
+      DaoSignTokenABI,
+      collectionAddress
+    );
+    
+    // Get user attestations for this schema
+    const attestations = await daoSignContract.methods.get_user_attestations(requiredSchemaId, userAddress).call();
+    
+    // Check if the user has any valid tokens
+    for (const attestation of attestations) {
+      if (!attestation.is_revoked) {
+        try {
+          const owner = await nftContract.methods.ownerOf(attestation.attestation_id).call();
+          if (owner.toLowerCase() === userAddress.toLowerCase()) {
+            return { 
+              hasAccess: true, 
+              tokenId: attestation.attestation_id,
+              attestation
+            };
+          }
+        } catch (error) {
+          // Token doesn't exist or has been burned
+          // Continue checking other attestations
+        }
+      }
+    }
+    
+    return { hasAccess: false, reason: 'No valid tokens found' };
+  } catch (error) {
+    console.error(`Error checking token access: ${error.message}`);
+    return { hasAccess: false, reason: `Error: ${error.message}` };
+  }
+}
+```
+
+### Token Display in React
+
+```jsx
+import React, { useState, useEffect } from 'react';
+
+function TokenDisplay({ schemaId, tokenId, daoSignContract, web3 }) {
+  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function loadToken() {
+      try {
+        setLoading(true);
+        
+        // Get the NFT collection address
+        const collectionAddress = await daoSignContract.methods.collection_by_schema(schemaId).call();
+        
+        if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+          throw new Error('No NFT collection for this schema');
+        }
+        
+        // Create NFT contract instance
+        const nftContract = new web3.eth.Contract(
+          DaoSignTokenABI,
+          collectionAddress
+        );
+        
+        // Get token owner
+        const owner = await nftContract.methods.ownerOf(tokenId).call();
+        
+        // Get attestation details
+        const attestation = await daoSignContract.methods.validate_and_get_attestation(tokenId).call();
+        
+        // Get schema details
+        const schema = await daoSignContract.methods.validate_and_get_schema(schemaId).call();
+        
+        // Get token URI and metadata
+        let metadata = null;
+        try {
+          const tokenURI = await nftContract.methods.tokenURI(tokenId).call();
+          if (tokenURI.startsWith('http')) {
+            const response = await fetch(tokenURI);
+            metadata = await response.json();
+          }
+        } catch (error) {
+          console.warn('Failed to fetch token metadata:', error);
+        }
+        
+        setToken({
+          tokenId,
+          schemaId,
+          schemaName: schema.metadata.name,
+          owner,
+          isRevoked: attestation.is_revoked,
+          createdAt: new Date(attestation.created_at * 1000),
+          metadata
+        });
+      } catch (error) {
+        setError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadToken();
+  }, [schemaId, tokenId, daoSignContract, web3]);
+
+  if (loading) {
+    return <div className="token-card loading">Loading token...</div>;
+  }
+  
+  if (error) {
+    return <div className="token-card error">Error: {error}</div>;
+  }
+  
+  if (!token) {
+    return <div className="token-card not-found">Token not found</div>;
+  }
+  
+  return (
+    <div className={`token-card ${token.isRevoked ? 'revoked' : 'active'}`}>
+      <div className="token-header">
+        <h3>{token.schemaName} #{token.tokenId}</h3>
+        <span className="status">{token.isRevoked ? 'REVOKED' : 'ACTIVE'}</span>
+      </div>
+      
+      {token.metadata && token.metadata.image && (
+        <div className="token-image">
+          <img src={token.metadata.image} alt={token.metadata.name || 'Token'} />
+        </div>
+      )}
+      
+      <div className="token-details">
+        <p><strong>Owner:</strong> {shortenAddress(token.owner)}</p>
+        <p><strong>Created:</strong> {token.createdAt.toLocaleDateString()}</p>
+        
+        {token.metadata && token.metadata.attributes && (
+          <div className="token-attributes">
+            <h4>Attributes</h4>
+            <ul>
+              {token.metadata.attributes.map((attr, index) => (
+                <li key={index}>
+                  <strong>{attr.trait_type}:</strong> {attr.value}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Helper function to shorten addresses
+function shortenAddress(address) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+export default TokenDisplay;
+```
+
+This API reference provides comprehensive information about working with NFT tokens in the DaoSign protocol. By following these patterns and examples, developers can integrate DaoSign's token functionality into their applications for document verification, access control, and visual representation of attestations.

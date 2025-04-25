@@ -1,33 +1,149 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: 'API Reference Introduction'
+description: 'Introduction to the DaoSign smart contract API'
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+# DaoSign API Reference
 
-## Welcome
+This API reference provides comprehensive documentation for the DaoSign smart contract interfaces. It covers all public functions, data structures, and events that compose the DaoSign protocol.
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+## Overview
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+The DaoSign API is divided into several sections:
 
-## Authentication
+1. **[Schemas API](/api-reference/schemas-api)**: Functions for creating and managing document templates
+2. **[Attestations API](/api-reference/attestations-api)**: Functions for creating and managing document instances
+3. **[Signatures API](/api-reference/signatures-api)**: Functions for signing documents and verifying signatures
+4. **[Tokens API](/api-reference/tokens-api)**: Functions for working with NFT tokens that represent attestations
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+## Contract Architecture
 
-```json
-"security": [
-  {
-    "bearerAuth": []
+DaoSign follows a modular contract architecture:
+
+- **Core Contract**: `DaoSign.sol` implements the main protocol functionality
+- **Upgraded Version**: `DaoSign_v2.sol` adds version tracking capabilities
+- **Token Contracts**: `DaoSignToken` and `DaoSignTokenFactory` handle NFT tokenization
+- **Interfaces**: Define data structures and function signatures
+- **Helper Libraries**: Provide utility functions for data encoding/decoding and signature verification
+
+## Using This Reference
+
+This reference is intended for developers integrating with the DaoSign protocol. Each section provides:
+
+- Function signatures and parameters
+- Data structure definitions
+- Example usage code
+- Error handling guidance
+- Best practices
+
+## Contract Addresses
+
+To interact with DaoSign, you'll need the contract addresses for your target network:
+
+```javascript
+// Example addresses (replace with actual deployment addresses for your environment)
+const NETWORKS = {
+  mainnet: {
+    daoSign: "0x1234567890123456789012345678901234567890",
+    daoSignFactory: "0x0987654321098765432109876543210987654321"
+  },
+  goerli: {
+    daoSign: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    daoSignFactory: "0xfedcbafedcbafedcbafedcbafedcbafedcbafedc"
   }
-]
+};
 ```
+
+## Contract ABIs
+
+The example code in this reference uses the following ABIs:
+
+- **DaoSignABI**: ABI for the main DaoSign contract
+- **DaoSignFactoryABI**: ABI for the DaoSignTokenFactory contract
+- **DaoSignTokenABI**: ABI for the DaoSignToken contract
+
+You should include these ABIs in your project to interact with the contracts.
+
+## Authentication and Signatures
+
+Many functions in the DaoSign protocol require cryptographic signatures for authentication and verification. These signatures are generated using the user's private key and are used to:
+
+1. Verify the creator of schemas and attestations
+2. Authenticate signatories when they sign attestations
+3. Authorize revocation of attestations
+
+When working with these functions, you'll need to implement proper signature generation and verification in your client applications.
+
+## Error Handling
+
+DaoSign uses Solidity's custom error feature to provide clear error messages. Each function documents its possible error conditions, and your application should handle these errors appropriately.
+
+Common error patterns include:
+
+```javascript
+try {
+  // Call DaoSign function
+  const result = await daoSignContract.methods.someFunction().send({ from: userAddress });
+  // Handle success
+} catch (error) {
+  // Extract error message
+  const errorMessage = error.message;
+  
+  // Handle specific error types
+  if (errorMessage.includes('SchemaDoesNotExist')) {
+    console.error('The referenced schema does not exist');
+    // Handle schema not found
+  } else if (errorMessage.includes('UnauthorizedAttestator')) {
+    console.error('You are not authorized to perform this action');
+    // Handle authorization error
+  } else {
+    console.error('Unknown error:', errorMessage);
+    // Handle other errors
+  }
+}
+```
+
+## Events
+
+DaoSign emits events for all major state changes. You should listen for these events to update your application state:
+
+```javascript
+// Using web3.js
+daoSignContract.events.SchemaCreated({})
+  .on('data', event => {
+    const schemaId = event.returnValues.schemaID;
+    console.log(`New schema created with ID: ${schemaId}`);
+    // Update your application state
+  })
+  .on('error', console.error);
+```
+
+## Data Encoding and Decoding
+
+DaoSign uses efficient data encoding for storage. When interacting with the contract, you may need to encode your data before sending it and decode returned data:
+
+```javascript
+// Encoding example (implementation depends on your encoding format)
+function encodeAttestationResult(attestationResult) {
+  // Convert attestation result to encoded format
+  // Return encoded data
+}
+
+// Decoding example (implementation depends on your encoding format)
+function decodeAttestationResult(encodedResult) {
+  // Convert encoded data to user-friendly format
+  // Return decoded data
+}
+```
+
+## Getting Started
+
+To start using the DaoSign API:
+
+1. Choose the network and contract addresses for your application
+2. Set up a Web3 connection and contract instances
+3. Implement proper signature generation and verification
+4. Handle events and error conditions
+5. Build your application's user interface
+
+For a complete guide on integrating DaoSign, see the [Quickstart](/quickstart) and [Web3 Integration](/technical/integration/web3-integration) pages.

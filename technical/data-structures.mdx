@@ -1,0 +1,396 @@
+---
+title: 'Data Structures'
+description: 'Key data structures in the DaoSign protocol'
+---
+
+# Data Structures
+
+This document provides detailed information about the core data structures used in the DaoSign protocol. Understanding these structures is essential for developers integrating with or extending the system.
+
+## Schema Structures
+
+Schemas define document templates and their requirements.
+
+### Schema
+
+The Schema structure represents a document template:
+
+```solidity
+struct Schema {
+    uint256 schema_id;
+    SchemaMetadata metadata;
+    SignatoryPolicy[] signatory_policy;
+    SchemaDefinition[] schema_definition;
+    bytes signature;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schema_id` | uint256 | Unique identifier for the schema |
+| `metadata` | SchemaMetadata | General information about the schema |
+| `signatory_policy` | SignatoryPolicy[] | Rules for who can sign attestations |
+| `schema_definition` | SchemaDefinition[] | Definition of data fields in the schema |
+| `signature` | bytes | Creator's signature validating the schema |
+
+### Internal Schema
+
+The InternalSchema structure is used for storage within the contract:
+
+```solidity
+struct InternalSchema {
+    uint256 schema_id;
+    SchemaMetadata metadata;
+    bytes[] signatory_policy;
+    bytes[] schema_definition;
+    bytes signature;
+}
+```
+
+The internal version uses encoded bytes arrays for storage efficiency.
+
+### Schema Metadata
+
+The SchemaMetadata structure provides information about a schema:
+
+```solidity
+struct SchemaMetadata {
+    string name;
+    string description;
+    string attestation_type;
+    string nft_name;
+    string nft_symbol;
+    address creator;
+    uint32 created_at;
+    bool is_nft;
+    bool is_public;
+    bool is_revokable;
+    uint32 expire_in;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Name of the schema |
+| `description` | string | Description of the schema |
+| `attestation_type` | string | Type of attestation (e.g., "agreement", "identity") |
+| `nft_name` | string | Name for NFT collection if enabled |
+| `nft_symbol` | string | Symbol for NFT collection if enabled |
+| `creator` | address | Address of schema creator |
+| `created_at` | uint32 | Timestamp of creation |
+| `is_nft` | bool | Whether attestations can be tokenized as NFTs |
+| `is_public` | bool | Whether anyone can create attestations from this schema |
+| `is_revokable` | bool | Whether attestations can be revoked |
+| `expire_in` | uint32 | Seconds until schema expires (0 = never) |
+
+### Schema Definition
+
+The SchemaDefinition structure defines a field in a schema:
+
+```solidity
+struct SchemaDefinition {
+    string definition_type;
+    string definition_name;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `definition_type` | string | Data type of the field (e.g., "string", "uint256") |
+| `definition_name` | string | Name of the field |
+
+### Signatory Policy
+
+The SignatoryPolicy structure defines rules for signatories:
+
+```solidity
+struct SignatoryPolicy {
+    bytes1 operator;
+    string signatory_description;
+    uint256[] required_schema_id;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `operator` | bytes1 | Logical operator (AND=0x01, OR=0x02, NOT=0x03) |
+| `signatory_description` | string | Description of the policy |
+| `required_schema_id` | uint256[] | IDs of schemas required for signatories |
+
+## Attestation Structures
+
+Attestations represent specific document instances.
+
+### Attestation
+
+The Attestation structure represents a document instance:
+
+```solidity
+struct Attestation {
+    uint256 attestation_id;
+    uint256 schema_id;
+    AttestationResult[] attestation_result;
+    address creator;
+    address recipient;
+    uint32 created_at;
+    address[] signatories;
+    bytes signature;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attestation_id` | uint256 | Unique identifier for the attestation |
+| `schema_id` | uint256 | ID of the schema this attestation is based on |
+| `attestation_result` | AttestationResult[] | Data values for each field |
+| `creator` | address | Address of attestation creator |
+| `recipient` | address | Address of attestation recipient |
+| `created_at` | uint32 | Timestamp of creation |
+| `signatories` | address[] | Addresses required to sign |
+| `signature` | bytes | Creator's signature |
+
+### Internal Attestation
+
+The InternalAttestation structure extends Attestation with additional fields:
+
+```solidity
+struct InternalAttestation {
+    uint256 attestation_id;
+    uint256 schema_id;
+    bytes[] attestation_result;
+    address creator;
+    address recipient;
+    uint32 created_at;
+    address[] signatories;
+    bytes signature;
+    bool is_revoked;
+    uint32 revoked_at;
+    bytes revoke_signature;
+}
+```
+
+The internal version includes:
+- Encoded attestation results for storage efficiency
+- Revocation state tracking fields
+
+### Attestation Result
+
+The AttestationResult structure contains a value for a schema field:
+
+```solidity
+struct AttestationResult {
+    string attestation_result_type;
+    string name;
+    bytes value;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attestation_result_type` | string | Data type of the field |
+| `name` | string | Name of the field (matching schema definition) |
+| `value` | bytes | The data value (encoded as bytes) |
+
+## Signature Structures
+
+These structures represent cryptographic proofs of approval.
+
+### Proof of Signature
+
+The ProofOfSignature structure represents a single signature:
+
+```solidity
+struct ProofOfSignature {
+    uint256 attestation_id;
+    address creator;
+    uint32 created_at;
+    bytes signature;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attestation_id` | uint256 | ID of the attestation being signed |
+| `creator` | address | Address of the signatory |
+| `created_at` | uint32 | Timestamp of signing |
+| `signature` | bytes | Cryptographic signature |
+
+### Proof of Agreement
+
+The ProofOfAgreement structure represents a collection of signatures:
+
+```solidity
+struct ProofOfAgreement {
+    uint256 attestation_id;
+    bytes[] signatures;
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attestation_id` | uint256 | ID of the attestation |
+| `signatures` | bytes[] | Collection of all required signatures |
+
+## Data Type Support
+
+DaoSign supports several data types for schema fields:
+
+| Type | Description | Solidity Equivalent |
+|------|-------------|--------------------|
+| `string` | Text data | string |
+| `boolean` | True/false values | bool |
+| `uint256` | Unsigned integers | uint256 |
+| `bytes` | Raw binary data | bytes |
+| `bytes32` | Fixed-length binary data | bytes32 |
+| `address` | Ethereum addresses | address |
+
+Each data type is converted to bytes for storage in attestation results.
+
+## Data Lifecycle
+
+### Schema Lifecycle
+
+1. Creation:
+   - Schema is created with metadata and field definitions
+   - If `is_nft` is true, an NFT collection is deployed
+   - Schema ID is assigned and incremented
+
+2. Usage:
+   - Schemas are immutable once created
+   - Schemas can expire based on `expire_in` timestamp
+   - Attestations can be created based on schemas
+
+### Attestation Lifecycle
+
+1. Creation:
+   - Attestation is created based on a schema
+   - Data is provided for each field defined in the schema
+   - Attestation ID is assigned and incremented
+
+2. Signing:
+   - Required signatories provide signatures
+   - Each signature is stored as a ProofOfSignature
+   - When all signatures are collected, a ProofOfAgreement is created
+
+3. Revocation (if allowed):
+   - Creator can revoke the attestation
+   - Revocation timestamp and signature are stored
+   - Any associated NFT is burned
+
+## Storage Encoding
+
+Data structures are encoded for efficient storage:
+
+1. **Schema Definitions**: Encoded as bytes arrays
+2. **Signatory Policies**: Encoded as bytes arrays
+3. **Attestation Results**: Encoded as bytes arrays
+
+The encoding/decoding is handled by the `DataResolver.sol` helper library.
+
+## Helper Functions
+
+Several helper functions manage these data structures:
+
+```solidity
+// Schema conversion
+function _get_internal_schema(Schema memory input_schema) private view returns (InternalSchema memory)
+
+// Attestation conversion
+function _get_internal_attestation(Attestation memory input_attestation) private view returns (InternalAttestation memory)
+
+// Field validation
+function _verify_attestation_result(SchemaDefinition memory sd, AttestationResult memory ar) private pure
+```
+
+These functions handle conversion between external and internal representations, ensuring data integrity.
+
+## Working with Schema Structures
+
+When creating a schema, you'll typically:
+
+```javascript
+const schema = {
+  metadata: {
+    name: "Employment Agreement",
+    description: "Standard employment contract",
+    attestation_type: "agreement",
+    nft_name: "Employment NFT",
+    nft_symbol: "EMP",
+    creator: userAddress,
+    is_nft: true,
+    is_public: true,
+    is_revokable: true,
+    expire_in: 0 // Never expires
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Employer Name" },
+    { definition_type: "string", definition_name: "Employee Name" },
+    { definition_type: "uint256", definition_name: "Start Date" }
+  ],
+  signatory_policy: []
+};
+```
+
+## Working with Attestation Structures
+
+When creating an attestation, you'll typically:
+
+```javascript
+const attestation = {
+  schema_id: 123,
+  attestation_result: [
+    {
+      attestation_result_type: "string",
+      name: "Employer Name",
+      value: "Acme Corp"
+    },
+    {
+      attestation_result_type: "string",
+      name: "Employee Name",
+      value: "John Doe"
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Start Date",
+      value: "1680307200" // Unix timestamp
+    }
+  ],
+  recipient: employeeAddress,
+  signatories: [employerAddress, employeeAddress]
+};
+```
+
+## Best Practices
+
+When working with DaoSign data structures:
+
+1. **Schema Design**:
+   - Keep schemas simple and focused
+   - Use descriptive field names
+   - Consider privacy implications of data
+   - Plan for future extension
+
+2. **Attestation Creation**:
+   - Validate data against schema requirements
+   - Ensure all required fields have values
+   - Use appropriate data types for values
+
+3. **Signature Handling**:
+   - Verify signatures before submission
+   - Track signature status for all signatories
+   - Implement clear UI for signature status
+
+4. **Revocation**:
+   - Have a clear policy for when revocation is appropriate
+   - Notify all parties when revocation occurs
+   - Maintain records of revoked attestations
+
+## Integration Patterns
+
+Common patterns for working with these data structures:
+
+1. **Schema Templates**: Predefined schemas for common document types
+2. **Validation Libraries**: Client-side validation of attestation data
+3. **Signature Workflows**: User interfaces for reviewing and signing
+4. **Status Tracking**: Dashboards for monitoring attestation status
+5. **History Views**: Displaying historical attestations for users

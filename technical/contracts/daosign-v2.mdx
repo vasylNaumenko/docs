@@ -1,0 +1,183 @@
+---
+title: 'DaoSign V2 Contract'
+description: 'Upgraded version of the DaoSign contract with version tracking'
+---
+
+# DaoSign V2 Contract
+
+The `DaoSignV2.sol` contract is an upgraded version of the core DaoSign contract. It extends the base functionality with version tracking capabilities while maintaining full backward compatibility.
+
+## Contract Overview
+
+```solidity
+contract DaoSignV2 is DaoSign {
+    // New state variable for version tracking
+    string public version;
+
+    // Event for upgrade tracking
+    event ContractUpgraded(string newVersion, uint256 timestamp);
+    
+    // ...
+}
+```
+
+This contract inherits all functionality from `DaoSign` and adds version tracking features. The implementation follows the UUPS (Universal Upgradeable Proxy Standard) pattern to enable future upgrades while preserving state.
+
+## New State Variables
+
+```solidity
+// New state variable for version tracking
+string public version;
+```
+
+DaoSignV2 adds a new state variable to track the contract version.
+
+## New Events
+
+```solidity
+// Event for upgrade tracking
+event ContractUpgraded(string newVersion, uint256 timestamp);
+```
+
+This event is emitted when the contract is upgraded, recording the new version and the timestamp of the upgrade.
+
+## Initialization Functions
+
+```solidity
+/**
+ * @dev Initialize function that should be called during the upgrade
+ * @param _daosign_factory Address of the DaoSignTokenFactory contract
+ */
+function initialize(address _daosign_factory) external override reinitializer(2) {
+    // Instead of calling super.initialize, we'll call the required initializers directly
+    __Ownable_init(msg.sender);
+    __UUPSUpgradeable_init();
+
+    // Set factory address
+    daosign_factory = _daosign_factory;
+
+    // Initialize V2-specific state
+    version = "2.0.0";
+    emit ContractUpgraded(version, block.timestamp);
+}
+```
+
+This function overrides the base `initialize` function with the `reinitializer(2)` modifier, which ensures it can only be called once after an upgrade. It:
+
+1. Initializes the Ownable and UUPSUpgradeable components
+2. Sets the DaoSignTokenFactory address
+3. Sets the version to "2.0.0"
+4. Emits a ContractUpgraded event
+
+```solidity
+/**
+ * @dev Reinitialize to set the version
+ * This function can be called during the upgrade
+ */
+function initializeV2() external reinitializer(3) {
+    // We don't need to call parent initializers here since this is a subsequent initialization
+    version = "2.0.0";
+    emit ContractUpgraded(version, block.timestamp);
+}
+```
+
+This function provides an alternative initialization path specifically for version tracking. It uses `reinitializer(3)` to allow a subsequent initialization if needed, for instance when upgrading from an already initialized V1 contract.
+
+## Upgrade Authorization
+
+```solidity
+/**
+ * @dev Override _authorizeUpgrade to add version tracking
+ */
+function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+    super._authorizeUpgrade(newImplementation);
+    emit ContractUpgraded(version, block.timestamp);
+}
+```
+
+This function overrides the base contract's `_authorizeUpgrade` to add version tracking. It:
+
+1. Calls the parent implementation to ensure owner-only authorization
+2. Emits a ContractUpgraded event to track the upgrade
+
+## Additional Functions
+
+```solidity
+/**
+ * @dev Returns the current version of the contract
+ * @return The version string
+ */
+function getVersion() external view returns (string memory) {
+    return version;
+}
+```
+
+This function provides a convenient way to query the current contract version.
+
+## Upgrade Process
+
+The upgrade from DaoSign to DaoSignV2 follows these steps:
+
+1. Deploy the DaoSignV2 implementation contract
+2. Call the upgrade function on the proxy contract to point to the new implementation
+3. Call the `initialize` or `initializeV2` function to set up the version tracking
+
+## Differences from DaoSign
+
+DaoSignV2 maintains full backward compatibility with DaoSign while adding:
+
+1. **Version Tracking**: Storing and reporting the contract version
+2. **Upgrade Events**: Emitting events when upgrades occur
+3. **Reinitializer Support**: Using the OpenZeppelin reinitializer pattern for safe upgrades
+
+All existing functionality from DaoSign continues to work the same way, including:
+- Schema creation and management
+- Attestation creation and management
+- Signature collection and verification
+- Revocation handling
+- NFT integration
+
+## Implementation Notes
+
+1. **Selective Initialization**: The contract uses careful initialization patterns to avoid re-initializing existing state
+2. **Event Tracking**: Events are emitted during initialization and upgrades to provide an audit trail
+3. **Versioning**: A simple string-based versioning scheme is used, which can be extended in future upgrades
+
+## Security Considerations
+
+1. **Upgrade Authority**: Only the contract owner can authorize upgrades, providing centralized control
+2. **Initialization Protection**: The reinitializer modifiers prevent multiple initializations of the same version
+3. **Inheritance Safety**: The contract carefully handles inheritance to ensure all parent functionality works correctly
+4. **Event Emission**: Events are emitted during critical operations to provide transparency
+
+## Future Upgrade Path
+
+When upgrading from DaoSignV2 to a future version:
+
+1. The new contract should inherit from DaoSignV2
+2. It should use a higher reinitializer number (e.g., `reinitializer(4)`)
+3. It should update the version string to reflect the new version
+4. It should include any new state variables or functionality needed
+
+## Usage Example
+
+```javascript
+// Deploy new implementation
+const DaoSignV2Factory = await ethers.getContractFactory("DaoSignV2");
+const daoSignV2Implementation = await DaoSignV2Factory.deploy();
+await daoSignV2Implementation.deployed();
+
+// Upgrade the proxy to the new implementation
+const proxy = await ethers.getContractAt("DaoSign", proxyAddress);
+const owner = await proxy.owner();
+const ownerSigner = await ethers.getSigner(owner);
+await proxy.connect(ownerSigner).upgradeTo(daoSignV2Implementation.address);
+
+// Initialize the new version
+const upgradedProxy = await ethers.getContractAt("DaoSignV2", proxyAddress);
+await upgradedProxy.connect(ownerSigner).initializeV2();
+
+// Verify the version
+const version = await upgradedProxy.getVersion();
+console.log(`Upgraded to version: ${version}`);
+```

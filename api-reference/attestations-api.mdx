@@ -1,0 +1,767 @@
+---
+title: 'Attestations API'
+description: 'API reference for working with DaoSign attestations'
+---
+
+# Attestations API
+
+This reference documents the smart contract functions and parameters for working with attestations in the DaoSign protocol.
+
+## Attestation Creation
+
+### `store_attestation`
+
+Creates a new attestation based on a schema.
+
+```solidity
+function store_attestation(Attestation memory input_attestation) external
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input_attestation` | `Attestation` | The attestation object to be created |
+
+#### Attestation Object Structure
+
+```solidity
+struct Attestation {
+    uint256 attestation_id;     // Will be assigned by the contract (can be left as 0)
+    uint256 schema_id;          // ID of the schema this attestation is based on
+    AttestationResult[] attestation_result; // Field values
+    address creator;            // Address of attestation creator (must be msg.sender)
+    address recipient;          // Address of attestation recipient
+    uint32 created_at;          // Will be set by the contract (can be left as 0)
+    address[] signatories;      // Addresses required to sign
+    bytes signature;            // Creator's signature
+}
+```
+
+#### AttestationResult Structure
+
+```solidity
+struct AttestationResult {
+    string attestation_result_type; // Data type matching schema definition
+    string name;                // Field name matching schema definition
+    bytes value;                // The actual data value
+}
+```
+
+#### Returns
+
+This function emits an `AttestationCreated` event with the new attestation ID.
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestation = {
+  attestation_id: 0, // Will be assigned by the contract
+  schema_id: 42, // Schema ID to use
+  attestation_result: [
+    {
+      attestation_result_type: "string",
+      name: "Employer Name",
+      value: ethers.utils.toUtf8Bytes("Acme Corporation")
+    },
+    {
+      attestation_result_type: "string",
+      name: "Employee Name",
+      value: ethers.utils.toUtf8Bytes("John Doe")
+    },
+    {
+      attestation_result_type: "string",
+      name: "Position",
+      value: ethers.utils.toUtf8Bytes("Software Engineer")
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Start Date",
+      value: ethers.utils.defaultAbiCoder.encode(["uint256"], [1672531200]) // Jan 1, 2023
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Salary",
+      value: ethers.utils.defaultAbiCoder.encode(["uint256"], [100000])
+    }
+  ],
+  creator: userAddress,
+  recipient: employeeAddress,
+  created_at: 0, // Will be set by the contract
+  signatories: [userAddress, employeeAddress], // Both employer and employee need to sign
+  signature: "0x..." // Generated signature
+};
+
+// Create the attestation
+const tx = await daoSignContract.methods.store_attestation(attestation).send({ from: userAddress });
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `InvalidSignature` | The provided signature is invalid |
+| `SchemaDoesNotExist` | The referenced schema does not exist |
+| `UnauthorizedAttestator` | The sender is not authorized to create attestations for this schema |
+| `SchemaAlreadyExpired` | The referenced schema has expired |
+| `AttestationLengthMismatch` | The number of attestation results does not match the schema definition |
+| `AttestationNameMismatch` | A field name does not match the schema definition |
+| `AttestationTypeMismatch` | A field type does not match the schema definition |
+
+## Attestation Revocation
+
+### `store_revoke`
+
+Revokes an existing attestation.
+
+```solidity
+function store_revoke(uint256 _attestation_id, bytes memory revoke_signature) external
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The ID of the attestation to revoke |
+| `revoke_signature` | `bytes` | The signature authorizing revocation |
+
+#### Returns
+
+This function emits a `Revoked` event with the attestation ID.
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+
+// First get the attestation to generate the revocation signature
+const attestation = await daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+
+// Generate revocation signature
+const revokeSignature = await generateRevocationSignature(attestation, userWallet);
+
+// Revoke the attestation
+const tx = await daoSignContract.methods.store_revoke(attestationId, revokeSignature).send({ from: userAddress });
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `AttestationDoesNotExist` | The specified attestation does not exist |
+| `AttestationCantBeRevoked` | The schema does not allow revocation |
+| `UnauthorizedAttestator` | Only the creator can revoke an attestation |
+| `InvalidSignature` | The provided revocation signature is invalid |
+
+## Attestation Signing
+
+### `store_pos`
+
+Signs an attestation, creating a Proof of Signature.
+
+```solidity
+function store_pos(uint256 _attestation_id, bytes memory signature) external
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The ID of the attestation to sign |
+| `signature` | `bytes` | The signature of approval |
+
+#### Returns
+
+This function emits a `ProofOfSignatureCreated` event. If all signatures are collected, it also creates a Proof of Agreement and may emit a `ProofOfAgreementCreated` event.
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+
+// Generate signature
+const signature = await generateAttestationSignature(attestationId, userWallet);
+
+// Sign the attestation
+const tx = await daoSignContract.methods.store_pos(attestationId, signature).send({ from: userAddress });
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `AttestationAlreadySigned` | The sender has already signed this attestation |
+| `AttestationDoesNotExist` | The specified attestation does not exist |
+| `AttestationRevoked` | The attestation has been revoked |
+| `InvalidSignature` | The provided signature is invalid |
+| `InvalidSignatoryAddress` | The sender is not listed as a required signatory |
+| `InsufficientAttestations` | The sender does not meet the signatory policy requirements |
+
+## Attestation Queries
+
+### `validate_and_get_attestation`
+
+Retrieves an attestation by ID.
+
+```solidity
+function validate_and_get_attestation(uint256 id) external view returns (InternalAttestation memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | `uint256` | The ID of the attestation to retrieve |
+
+#### Returns
+
+Returns an `InternalAttestation` object containing the attestation data.
+
+#### InternalAttestation Structure
+
+```solidity
+struct InternalAttestation {
+    uint256 attestation_id;
+    uint256 schema_id;
+    bytes[] attestation_result;  // Encoded attestation results
+    address creator;
+    address recipient;
+    uint32 created_at;
+    address[] signatories;
+    bytes signature;
+    bool is_revoked;
+    uint32 revoked_at;
+    bytes revoke_signature;
+}
+```
+
+The internal representation uses encoded bytes arrays for storage efficiency. Your client application will need to decode these fields for user-friendly display.
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+const attestation = await daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+
+console.log(`Attestation ID: ${attestation.attestation_id}`);
+console.log(`Schema ID: ${attestation.schema_id}`);
+console.log(`Creator: ${attestation.creator}`);
+console.log(`Recipient: ${attestation.recipient}`);
+console.log(`Created: ${new Date(attestation.created_at * 1000).toLocaleString()}`);
+console.log(`Is revoked: ${attestation.is_revoked}`);
+if (attestation.is_revoked) {
+  console.log(`Revoked: ${new Date(attestation.revoked_at * 1000).toLocaleString()}`);
+}
+```
+
+#### Errors
+
+| Error | Description |
+|-------|-------------|
+| `AttestationDoesNotExist` | No attestation exists with the provided ID |
+
+### `get_user_attestations`
+
+Retrieves all attestations for a user under a specific schema.
+
+```solidity
+function get_user_attestations(uint256 _schemaID, address user) external view returns (InternalAttestation[] memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_schemaID` | `uint256` | The schema ID to filter attestations by |
+| `user` | `address` | The user address to get attestations for |
+
+#### Returns
+
+Returns an array of `InternalAttestation` objects.
+
+#### Example
+
+```javascript
+// Using web3.js
+const schemaId = 42;
+const userAddress = '0x1234...';
+const attestations = await daoSignContract.methods.get_user_attestations(schemaId, userAddress).call();
+
+console.log(`Found ${attestations.length} attestations for user ${userAddress} under schema ${schemaId}`);
+attestations.forEach((attestation, index) => {
+  console.log(`Attestation ${index + 1}:`);
+  console.log(`  ID: ${attestation.attestation_id}`);
+  console.log(`  Created: ${new Date(attestation.created_at * 1000).toLocaleString()}`);
+  console.log(`  Is revoked: ${attestation.is_revoked}`);
+});
+```
+
+### `attestation_id`
+
+Returns the current attestation counter.
+
+```solidity
+function attestation_id() external view returns (uint256)
+```
+
+#### Returns
+
+Returns a `uint256` representing the next attestation ID that will be assigned.
+
+#### Example
+
+```javascript
+// Using web3.js
+const nextAttestationId = await daoSignContract.methods.attestation_id().call();
+console.log(`Next attestation ID will be: ${nextAttestationId}`);
+```
+
+## Signature Queries
+
+### `get_proof_of_signature`
+
+Retrieves all signatures for an attestation.
+
+```solidity
+function get_proof_of_signature(uint256 _attestation_id) external view returns (ProofOfSignature[] memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The attestation ID to get signatures for |
+
+#### Returns
+
+Returns an array of `ProofOfSignature` objects.
+
+#### ProofOfSignature Structure
+
+```solidity
+struct ProofOfSignature {
+    uint256 attestation_id;
+    address creator;
+    uint32 created_at;
+    bytes signature;
+}
+```
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+
+console.log(`Found ${signatures.length} signatures for attestation ${attestationId}`);
+signatures.forEach((signature, index) => {
+  console.log(`Signature ${index + 1}:`);
+  console.log(`  Signer: ${signature.creator}`);
+  console.log(`  Timestamp: ${new Date(signature.created_at * 1000).toLocaleString()}`);
+});
+```
+
+### `get_proof_of_agreement`
+
+Retrieves proofs of agreement for an attestation.
+
+```solidity
+function get_proof_of_agreement(uint256 _attestation_id) external view returns (ProofOfAgreement[] memory)
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `_attestation_id` | `uint256` | The attestation ID to get agreements for |
+
+#### Returns
+
+Returns an array of `ProofOfAgreement` objects.
+
+#### ProofOfAgreement Structure
+
+```solidity
+struct ProofOfAgreement {
+    uint256 attestation_id;
+    bytes[] signatures;
+}
+```
+
+#### Example
+
+```javascript
+// Using web3.js
+const attestationId = 123;
+const agreements = await daoSignContract.methods.get_proof_of_agreement(attestationId).call();
+
+console.log(`Found ${agreements.length} proofs of agreement for attestation ${attestationId}`);
+if (agreements.length > 0) {
+  console.log(`Agreement contains ${agreements[0].signatures.length} signatures`);
+}
+```
+
+## Helper Functions
+
+These helper functions are useful when working with attestations:
+
+### Client-side Attestation Validation
+
+```javascript
+async function validateAttestation(attestation, daoSign) {
+  const errors = [];
+
+  // Check required fields
+  if (!attestation.schema_id) errors.push('Schema ID is required');
+  if (!attestation.creator) errors.push('Creator address is required');
+  if (!attestation.attestation_result || attestation.attestation_result.length === 0) {
+    errors.push('Attestation results cannot be empty');
+  }
+  
+  // Check that schema exists
+  try {
+    const schema = await daoSign.methods.validate_and_get_schema(attestation.schema_id).call();
+    
+    // Check result count matches schema definition count
+    if (attestation.attestation_result.length !== schema.schema_definition.length) {
+      errors.push(`Expected ${schema.schema_definition.length} fields, but got ${attestation.attestation_result.length}`);
+    }
+    
+    // Check field names and types
+    // Note: This simplified example assumes decoded schema definitions are available
+    const schemaDefinitions = decodeSchemaDefinition(schema.schema_definition);
+    attestation.attestation_result.forEach((result, index) => {
+      if (index < schemaDefinitions.length) {
+        if (result.name !== schemaDefinitions[index].definition_name) {
+          errors.push(`Field name mismatch: expected "${schemaDefinitions[index].definition_name}", got "${result.name}"`);
+        }
+        if (result.attestation_result_type !== schemaDefinitions[index].definition_type) {
+          errors.push(`Field type mismatch for "${result.name}": expected "${schemaDefinitions[index].definition_type}", got "${result.attestation_result_type}"`);
+        }
+      }
+    });
+    
+    // Check schema permissions
+    if (!schema.metadata.is_public && attestation.creator !== schema.metadata.creator) {
+      errors.push('Only the schema creator can create attestations for private schemas');
+    }
+    
+    // Check if schema is expired
+    if (schema.metadata.expire_in > 0) {
+      const expiration = Number(schema.metadata.created_at) + Number(schema.metadata.expire_in);
+      if (expiration < Math.floor(Date.now() / 1000)) {
+        errors.push(`Schema expired on ${new Date(expiration * 1000).toLocaleString()}`);
+      }
+    }
+  } catch (error) {
+    errors.push(`Schema validation failed: ${error.message}`);
+  }
+  
+  return { isValid: errors.length === 0, errors };
+}
+```
+
+### Attestation Signature Generation
+
+```javascript
+// Using ethers.js
+async function generateAttestationSignature(attestation, signer) {
+  // Create a hash of the attestation
+  const attestationHash = ethers.utils.keccak256(
+    ethers.utils.defaultAbiCoder.encode(
+      ['uint256', 'uint256', 'address', 'address', 'uint32'],
+      [
+        attestation.attestation_id || 0,
+        attestation.schema_id,
+        attestation.creator,
+        attestation.recipient,
+        attestation.created_at || Math.floor(Date.now() / 1000)
+      ]
+    )
+  );
+  
+  // Sign the hash
+  const messageHashBytes = ethers.utils.arrayify(attestationHash);
+  const signature = await signer.signMessage(messageHashBytes);
+  
+  return signature;
+}
+```
+
+### Revocation Signature Generation
+
+```javascript
+// Using ethers.js
+async function generateRevocationSignature(attestation, signer) {
+  // Create a hash of the attestation with revocation info
+  const revocationHash = ethers.utils.keccak256(
+    ethers.utils.defaultAbiCoder.encode(
+      ['uint256', 'uint256', 'address', 'address', 'uint32', 'bool', 'uint32'],
+      [
+        attestation.attestation_id,
+        attestation.schema_id,
+        attestation.creator,
+        attestation.recipient,
+        attestation.created_at,
+        true, // is_revoked
+        Math.floor(Date.now() / 1000) // revoked_at
+      ]
+    )
+  );
+  
+  // Sign the hash
+  const messageHashBytes = ethers.utils.arrayify(revocationHash);
+  const signature = await signer.signMessage(messageHashBytes);
+  
+  return signature;
+}
+```
+
+### Decoding Attestation Results
+
+```javascript
+// Decoding attestation results from the internal representation
+function decodeAttestationResults(encodedResults, schemaDefinitions) {
+  return encodedResults.map((encodedResult, index) => {
+    // Get the expected type from schema definitions
+    const expectedType = (index < schemaDefinitions.length) 
+      ? schemaDefinitions[index].definition_type 
+      : 'unknown';
+    
+    // Decode based on the type
+    let decodedValue = '';
+    try {
+      switch (expectedType) {
+        case 'string':
+          decodedValue = ethers.utils.toUtf8String(encodedResult);
+          break;
+        case 'uint256':
+          decodedValue = ethers.utils.defaultAbiCoder.decode(['uint256'], encodedResult)[0].toString();
+          break;
+        case 'boolean':
+          decodedValue = ethers.utils.defaultAbiCoder.decode(['bool'], encodedResult)[0] ? 'true' : 'false';
+          break;
+        case 'address':
+          decodedValue = ethers.utils.defaultAbiCoder.decode(['address'], encodedResult)[0];
+          break;
+        default:
+          decodedValue = `[Binary data: 0x${encodedResult.slice(2, 10)}...]`;
+      }
+    } catch (error) {
+      decodedValue = `[Error decoding: ${error.message}]`;
+    }
+    
+    return {
+      name: schemaDefinitions[index]?.definition_name || `Field ${index}`,
+      type: expectedType,
+      value: decodedValue
+    };
+  });
+}
+```
+
+## Attestation Status Checking
+
+```javascript
+// Get the complete status of an attestation
+async function getAttestationStatus(attestationId, daoSignContract) {
+  try {
+    // Get attestation details
+    const attestation = await daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+    
+    // Get schema details
+    const schema = await daoSignContract.methods.validate_and_get_schema(attestation.schema_id).call();
+    
+    // Get signatures
+    const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+    
+    // Get agreements
+    const agreements = await daoSignContract.methods.get_proof_of_agreement(attestationId).call();
+    
+    // Calculate status
+    let status = 'Active';
+    if (attestation.is_revoked) {
+      status = 'Revoked';
+    } else if (agreements.length > 0) {
+      status = 'Fully Signed';
+    } else if (signatures.length > 0) {
+      status = 'Partially Signed';
+    } else {
+      status = 'Pending Signatures';
+    }
+    
+    // Calculate signing progress
+    const requiredSignatures = attestation.signatories.length;
+    const completedSignatures = signatures.length;
+    const progress = requiredSignatures > 0 ? (completedSignatures / requiredSignatures) * 100 : 100;
+    
+    // Get remaining signatories
+    const signedAddresses = signatures.map(sig => sig.creator.toLowerCase());
+    const pendingSignatories = attestation.signatories.filter(
+      addr => !signedAddresses.includes(addr.toLowerCase())
+    );
+    
+    return {
+      attestationId,
+      schemaId: attestation.schema_id,
+      schemaName: schema.metadata.name,
+      creator: attestation.creator,
+      recipient: attestation.recipient,
+      createdAt: new Date(attestation.created_at * 1000),
+      status,
+      isRevoked: attestation.is_revoked,
+      revokedAt: attestation.is_revoked ? new Date(attestation.revoked_at * 1000) : null,
+      signingProgress: {
+        required: requiredSignatures,
+        completed: completedSignatures,
+        percent: progress.toFixed(1),
+        isPending: completedSignatures < requiredSignatures,
+        pendingSignatories
+      },
+      hasProofOfAgreement: agreements.length > 0
+    };
+  } catch (error) {
+    console.error('Error getting attestation status:', error);
+    throw error;
+  }
+}
+```
+
+## Best Practices
+
+When working with attestations:
+
+1. **Data Validation**: Validate attestation data against the schema before submission
+2. **Signature Security**: Keep private keys secure and never share them
+3. **User Verification**: Verify recipient and signatory addresses carefully
+4. **Transaction Monitoring**: Monitor the status of transactions for successful execution
+5. **Error Handling**: Implement robust error handling, especially for signature operations
+6. **Signature Status**: Track the status of all required signatures
+7. **Revocation Planning**: Have a well-defined process for when and how to revoke attestations
+8. **Expiration Handling**: Check and handle schema expiration dates appropriately
+9. **NFT Integration**: Consider how NFT ownership represents attestation status
+10. **Data Privacy**: Be cautious with sensitive data in attestation fields
+
+## Common Patterns
+
+### Workflow Integration
+
+```javascript
+// Example of integrating with a multi-step workflow
+
+async function processEmploymentAgreement(employerAddress, employeeAddress, employmentDetails) {
+  try {
+    // Step 1: Create attestation
+    const attestation = buildEmploymentAttestation(employerAddress, employeeAddress, employmentDetails);
+    const attestationId = await createAttestation(attestation);
+    
+    // Step 2: Employer signs first
+    await notifyForSignature(employerAddress, attestationId, 'Please sign the employment agreement');
+    
+    // Step 3: Wait for employer signature (in a real app, this would be event-based)
+    await waitForSignature(attestationId, employerAddress);
+    
+    // Step 4: Notify employee to sign
+    await notifyForSignature(employeeAddress, attestationId, 'Please sign your employment agreement');
+    
+    // Step 5: Wait for employee signature (in a real app, this would be event-based)
+    await waitForSignature(attestationId, employeeAddress);
+    
+    // Step 6: All signatures collected - agreement is complete
+    const agreement = await daoSignContract.methods.get_proof_of_agreement(attestationId).call();
+    if (agreement.length > 0) {
+      // Step 7: Perform post-agreement actions
+      await updateEmployeeRecords(employeeAddress, attestationId);
+      await notifyHR(attestationId, 'Employment agreement fully signed');
+      
+      return {
+        success: true,
+        attestationId,
+        message: 'Employment agreement process completed successfully'
+      };
+    } else {
+      throw new Error('Agreement signatures were not properly collected');
+    }
+  } catch (error) {
+    console.error('Employment agreement process failed:', error);
+    return {
+      success: false,
+      message: `Employment agreement process failed: ${error.message}`
+    };
+  }
+}
+```
+
+### Attestation Verification
+
+```javascript
+// Example of verifying an attestation's authenticity
+
+async function verifyAttestationAuthenticity(attestationId) {
+  try {
+    // Get attestation details
+    const attestation = await daoSignContract.methods.validate_and_get_attestation(attestationId).call();
+    
+    // Get all signatures
+    const signatures = await daoSignContract.methods.get_proof_of_signature(attestationId).call();
+    
+    // Verify each signature
+    const verificationResults = await Promise.all(signatures.map(async (sig) => {
+      // Create the expected message hash
+      const messageHash = ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(['uint256'], [attestationId])
+      );
+      
+      // Recover the address that signed the message
+      const messageHashBytes = ethers.utils.arrayify(messageHash);
+      const recoveredAddress = ethers.utils.verifyMessage(messageHashBytes, sig.signature);
+      
+      // Check if recovered address matches the claimed signer
+      const isValid = recoveredAddress.toLowerCase() === sig.creator.toLowerCase();
+      
+      return {
+        signatory: sig.creator,
+        timestamp: new Date(sig.created_at * 1000).toLocaleString(),
+        isValid,
+        recoveredAddress
+      };
+    }));
+    
+    // Check creator's signature on the attestation itself
+    const attestationHash = ethers.utils.keccak256(
+      ethers.utils.defaultAbiCoder.encode(
+        ['uint256', 'uint256', 'address', 'address', 'uint32'],
+        [
+          attestation.attestation_id,
+          attestation.schema_id,
+          attestation.creator,
+          attestation.recipient,
+          attestation.created_at
+        ]
+      )
+    );
+    
+    const messageHashBytes = ethers.utils.arrayify(attestationHash);
+    const recoveredCreator = ethers.utils.verifyMessage(messageHashBytes, attestation.signature);
+    const isCreatorValid = recoveredCreator.toLowerCase() === attestation.creator.toLowerCase();
+    
+    return {
+      isAuthentic: isCreatorValid && verificationResults.every(result => result.isValid),
+      creatorVerification: {
+        claimed: attestation.creator,
+        recovered: recoveredCreator,
+        isValid: isCreatorValid
+      },
+      signatureVerifications: verificationResults
+    };
+  } catch (error) {
+    console.error('Error verifying attestation:', error);
+    throw error;
+  }
+}
+```

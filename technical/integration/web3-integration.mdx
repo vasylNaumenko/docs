@@ -1,0 +1,653 @@
+---
+title: 'Web3 Integration'
+description: 'Integrating DaoSign with Web3 applications'
+---
+
+# Web3 Integration
+
+This guide covers how to integrate DaoSign with Web3 applications, enabling document creation, signing, and verification in your dApp.
+
+## Prerequisites
+
+- Basic knowledge of Ethereum and Web3 development
+- A Web3 development environment (e.g., ethers.js, web3.js)
+- Connection to an Ethereum network (mainnet, testnet, or local)
+
+## Contract Addresses
+
+To interact with DaoSign, you'll need the contract addresses for your target network:
+
+```javascript
+// Example addresses (replace with actual deployment addresses)
+const NETWORKS = {
+  mainnet: {
+    daoSign: "0x1234567890123456789012345678901234567890",
+    daoSignFactory: "0x0987654321098765432109876543210987654321"
+  },
+  goerli: {
+    daoSign: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    daoSignFactory: "0xfedcbafedcbafedcbafedcbafedcbafedcbafedc"
+  }
+};
+```
+
+## Setting Up the Client
+
+### Using ethers.js
+
+```javascript
+import { ethers } from 'ethers';
+import { DaoSignABI, DaoSignFactoryABI } from './abis';
+
+class DaoSignClient {
+  constructor(providerOrSigner, network = 'mainnet') {
+    this.provider = providerOrSigner;
+    this.network = network;
+    this.signer = providerOrSigner.getSigner ? providerOrSigner.getSigner() : providerOrSigner;
+    
+    // Initialize contract instances
+    this.daoSign = new ethers.Contract(
+      NETWORKS[network].daoSign,
+      DaoSignABI,
+      this.signer
+    );
+    
+    this.daoSignFactory = new ethers.Contract(
+      NETWORKS[network].daoSignFactory,
+      DaoSignFactoryABI,
+      this.signer
+    );
+  }
+  
+  // Client methods will go here
+}
+```
+
+### Using web3.js
+
+```javascript
+import Web3 from 'web3';
+import { DaoSignABI, DaoSignFactoryABI } from './abis';
+
+class DaoSignClient {
+  constructor(provider, network = 'mainnet') {
+    this.web3 = new Web3(provider);
+    this.network = network;
+    
+    // Initialize contract instances
+    this.daoSign = new this.web3.eth.Contract(
+      DaoSignABI,
+      NETWORKS[network].daoSign
+    );
+    
+    this.daoSignFactory = new this.web3.eth.Contract(
+      DaoSignFactoryABI,
+      NETWORKS[network].daoSignFactory
+    );
+  }
+  
+  // Client methods will go here
+}
+```
+
+## Creating Schemas
+
+```javascript
+async createSchema(schema) {
+  // Get current account
+  const accounts = await this.web3.eth.getAccounts();
+  const from = accounts[0];
+  
+  // Ensure the creator field matches the sender
+  schema.metadata.creator = from;
+  
+  // Generate signature
+  const schemaHash = this.hashSchema(schema);
+  const signature = await this.signMessage(schemaHash);
+  schema.signature = signature;
+  
+  // Create the schema
+  const tx = await this.daoSign.methods.store_schema(schema).send({ from });
+  
+  // Get schema ID from event logs
+  const receipt = await this.web3.eth.getTransactionReceipt(tx.transactionHash);
+  const schemaCreatedEvent = receipt.logs.find(
+    log => log.topics[0] === this.web3.utils.keccak256('SchemaCreated(uint256)')
+  );
+  
+  const schemaId = this.web3.utils.hexToNumber(schemaCreatedEvent.topics[1]);
+  return schemaId;
+}
+
+hashSchema(schema) {
+  // Implementation depends on your specific hashing approach
+  // This should match the contract's signature verification logic
+  return this.web3.utils.soliditySha3(
+    { t: 'uint256', v: schema.schema_id || 0 },
+    { t: 'string', v: schema.metadata.name },
+    { t: 'address', v: schema.metadata.creator },
+    // Include other relevant fields...
+  );
+}
+
+async signMessage(hash) {
+  const accounts = await this.web3.eth.getAccounts();
+  return this.web3.eth.personal.sign(
+    hash,
+    accounts[0],
+    '' // Password (empty for most wallet providers)
+  );
+}
+```
+
+## Creating Attestations
+
+```javascript
+async createAttestation(attestation) {
+  // Get current account
+  const accounts = await this.web3.eth.getAccounts();
+  const from = accounts[0];
+  
+  // Ensure the creator field matches the sender
+  attestation.creator = from;
+  attestation.created_at = Math.floor(Date.now() / 1000);
+  
+  // Generate signature
+  const attestationHash = this.hashAttestation(attestation);
+  const signature = await this.signMessage(attestationHash);
+  attestation.signature = signature;
+  
+  // Create the attestation
+  const tx = await this.daoSign.methods.store_attestation(attestation).send({ from });
+  
+  // Get attestation ID from event logs
+  const receipt = await this.web3.eth.getTransactionReceipt(tx.transactionHash);
+  const attestationCreatedEvent = receipt.logs.find(
+    log => log.topics[0] === this.web3.utils.keccak256('AttestationCreated(uint256)')
+  );
+  
+  const attestationId = this.web3.utils.hexToNumber(attestationCreatedEvent.topics[1]);
+  return attestationId;
+}
+
+hashAttestation(attestation) {
+  // Implementation depends on your specific hashing approach
+  // This should match the contract's signature verification logic
+  return this.web3.utils.soliditySha3(
+    { t: 'uint256', v: attestation.attestation_id || 0 },
+    { t: 'uint256', v: attestation.schema_id },
+    { t: 'address', v: attestation.creator },
+    { t: 'address', v: attestation.recipient },
+    { t: 'uint32', v: attestation.created_at },
+    // Include other relevant fields...
+  );
+}
+```
+
+## Signing Attestations
+
+```javascript
+async signAttestation(attestationId) {
+  // Get current account
+  const accounts = await this.web3.eth.getAccounts();
+  const from = accounts[0];
+  
+  // Generate signature
+  const signature = await this.signAttestationMessage(attestationId);
+  
+  // Submit the signature
+  const tx = await this.daoSign.methods.store_pos(attestationId, signature).send({ from });
+  
+  return tx;
+}
+
+async signAttestationMessage(attestationId) {
+  const accounts = await this.web3.eth.getAccounts();
+  const messageToSign = this.web3.utils.soliditySha3(
+    { t: 'uint256', v: attestationId }
+  );
+  
+  return this.web3.eth.personal.sign(
+    messageToSign,
+    accounts[0],
+    '' // Password (empty for most wallet providers)
+  );
+}
+```
+
+## Revoking Attestations
+
+```javascript
+async revokeAttestation(attestationId) {
+  // Get current account
+  const accounts = await this.web3.eth.getAccounts();
+  const from = accounts[0];
+  
+  // Fetch the attestation
+  const attestation = await this.getAttestation(attestationId);
+  
+  // Set revocation status
+  attestation.is_revoked = true;
+  attestation.revoked_at = Math.floor(Date.now() / 1000);
+  
+  // Generate revocation signature
+  const revokeHash = this.hashRevocation(attestation);
+  const revokeSignature = await this.signMessage(revokeHash);
+  
+  // Submit the revocation
+  const tx = await this.daoSign.methods.store_revoke(attestationId, revokeSignature).send({ from });
+  
+  return tx;
+}
+
+hashRevocation(attestation) {
+  // Implementation depends on your specific hashing approach
+  // This should match the contract's signature verification logic
+  return this.web3.utils.soliditySha3(
+    { t: 'uint256', v: attestation.attestation_id },
+    { t: 'uint256', v: attestation.schema_id },
+    { t: 'address', v: attestation.creator },
+    { t: 'address', v: attestation.recipient },
+    { t: 'uint32', v: attestation.created_at },
+    { t: 'bool', v: attestation.is_revoked },
+    { t: 'uint32', v: attestation.revoked_at }
+    // Include other relevant fields...
+  );
+}
+```
+
+## Querying Data
+
+### Getting Schema Information
+
+```javascript
+async getSchema(schemaId) {
+  const schema = await this.daoSign.methods.validate_and_get_schema(schemaId).call();
+  
+  // Convert from internal format to user-friendly format
+  return this.formatSchema(schema);
+}
+
+formatSchema(internalSchema) {
+  // Convert from internal contract representation to application representation
+  // This might involve decoding the encoded bytes arrays, parsing types, etc.
+  return {
+    schema_id: internalSchema.schema_id,
+    metadata: {
+      name: internalSchema.metadata.name,
+      description: internalSchema.metadata.description,
+      attestation_type: internalSchema.metadata.attestation_type,
+      nft_name: internalSchema.metadata.nft_name,
+      nft_symbol: internalSchema.metadata.nft_symbol,
+      creator: internalSchema.metadata.creator,
+      created_at: parseInt(internalSchema.metadata.created_at),
+      is_nft: internalSchema.metadata.is_nft,
+      is_public: internalSchema.metadata.is_public,
+      is_revokable: internalSchema.metadata.is_revokable,
+      expire_in: parseInt(internalSchema.metadata.expire_in)
+    },
+    schema_definition: this.decodeSchemaDefinition(internalSchema.schema_definition),
+    signatory_policy: this.decodeSignatoryPolicy(internalSchema.signatory_policy),
+    signature: internalSchema.signature
+  };
+}
+```
+
+### Getting Attestation Information
+
+```javascript
+async getAttestation(attestationId) {
+  const attestation = await this.daoSign.methods.validate_and_get_attestation(attestationId).call();
+  
+  // Convert from internal format to user-friendly format
+  return this.formatAttestation(attestation);
+}
+
+formatAttestation(internalAttestation) {
+  // Convert from internal contract representation to application representation
+  return {
+    attestation_id: internalAttestation.attestation_id,
+    schema_id: internalAttestation.schema_id,
+    attestation_result: this.decodeAttestationResult(internalAttestation.attestation_result),
+    creator: internalAttestation.creator,
+    recipient: internalAttestation.recipient,
+    created_at: parseInt(internalAttestation.created_at),
+    signatories: internalAttestation.signatories,
+    signature: internalAttestation.signature,
+    is_revoked: internalAttestation.is_revoked,
+    revoked_at: parseInt(internalAttestation.revoked_at),
+    revoke_signature: internalAttestation.revoke_signature
+  };
+}
+```
+
+### Getting Signature Information
+
+```javascript
+async getProofOfSignature(attestationId) {
+  return this.daoSign.methods.get_proof_of_signature(attestationId).call();
+}
+
+async getProofOfAgreement(attestationId) {
+  return this.daoSign.methods.get_proof_of_agreement(attestationId).call();
+}
+
+async getUserAttestations(schemaId, userAddress) {
+  const attestations = await this.daoSign.methods.get_user_attestations(schemaId, userAddress).call();
+  
+  // Format each attestation
+  return attestations.map(attestation => this.formatAttestation(attestation));
+}
+```
+
+## NFT Integration
+
+### Checking NFT Status
+
+```javascript
+async getNFTCollectionAddress(schemaId) {
+  return this.daoSign.methods.collection_by_schema(schemaId).call();
+}
+
+async isNFTMinted(schemaId, attestationId) {
+  const collectionAddress = await this.getNFTCollectionAddress(schemaId);
+  if (!collectionAddress || collectionAddress === '0x0000000000000000000000000000000000000000') {
+    return false;
+  }
+  
+  // Create NFT contract instance
+  const nftContract = new this.web3.eth.Contract(
+    DaoSignTokenABI,
+    collectionAddress
+  );
+  
+  try {
+    // Check if token exists by trying to get its owner
+    const owner = await nftContract.methods.ownerOf(attestationId).call();
+    return { exists: true, owner };
+  } catch (error) {
+    // ERC721 throws if token doesn't exist
+    return { exists: false, owner: null };
+  }
+}
+```
+
+## Event Listening
+
+### Listening for Schema Creation
+
+```javascript
+listenForSchemaCreation(callback) {
+  this.daoSign.events.SchemaCreated({})
+    .on('data', event => {
+      const schemaId = parseInt(event.returnValues.schemaID);
+      callback(schemaId);
+    })
+    .on('error', error => console.error('Error in schema event:', error));
+}
+```
+
+### Listening for Attestation Creation
+
+```javascript
+listenForAttestationCreation(callback) {
+  this.daoSign.events.AttestationCreated({})
+    .on('data', event => {
+      const attestationId = parseInt(event.returnValues.attestationID);
+      callback(attestationId);
+    })
+    .on('error', error => console.error('Error in attestation event:', error));
+}
+```
+
+### Listening for Signatures
+
+```javascript
+listenForSignatures(attestationId, callback) {
+  this.daoSign.events.ProofOfSignatureCreated({
+    filter: { attestationID: attestationId }
+  })
+    .on('data', event => {
+      const attestationId = parseInt(event.returnValues.attestationID);
+      this.getProofOfSignature(attestationId)
+        .then(signatures => callback(attestationId, signatures))
+        .catch(error => console.error('Error fetching signatures:', error));
+    })
+    .on('error', error => console.error('Error in signature event:', error));
+}
+```
+
+### Listening for Agreements
+
+```javascript
+listenForAgreements(attestationId, callback) {
+  this.daoSign.events.ProofOfAgreementCreated({
+    filter: { attestationID: attestationId }
+  })
+    .on('data', event => {
+      const attestationId = parseInt(event.returnValues.attestationID);
+      this.getProofOfAgreement(attestationId)
+        .then(agreements => callback(attestationId, agreements))
+        .catch(error => console.error('Error fetching agreements:', error));
+    })
+    .on('error', error => console.error('Error in agreement event:', error));
+}
+```
+
+### Listening for Revocations
+
+```javascript
+listenForRevocations(callback) {
+  this.daoSign.events.Revoked({})
+    .on('data', event => {
+      const attestationId = parseInt(event.returnValues.attestationID);
+      this.getAttestation(attestationId)
+        .then(attestation => callback(attestationId, attestation))
+        .catch(error => console.error('Error fetching revoked attestation:', error));
+    })
+    .on('error', error => console.error('Error in revocation event:', error));
+}
+```
+
+## Complete DaoSign Client
+
+A complete DaoSign client would combine all these functions into a comprehensive API:
+
+```javascript
+export class DaoSignClient {
+  constructor(provider, network = 'mainnet') {
+    // Initialize as shown above...
+  }
+  
+  // Schema methods
+  async createSchema(schema) { /* ... */ }
+  async getSchema(schemaId) { /* ... */ }
+  
+  // Attestation methods
+  async createAttestation(attestation) { /* ... */ }
+  async getAttestation(attestationId) { /* ... */ }
+  async getUserAttestations(schemaId, userAddress) { /* ... */ }
+  
+  // Signature methods
+  async signAttestation(attestationId) { /* ... */ }
+  async getProofOfSignature(attestationId) { /* ... */ }
+  async getProofOfAgreement(attestationId) { /* ... */ }
+  
+  // Revocation methods
+  async revokeAttestation(attestationId) { /* ... */ }
+  
+  // NFT methods
+  async getNFTCollectionAddress(schemaId) { /* ... */ }
+  async isNFTMinted(schemaId, attestationId) { /* ... */ }
+  
+  // Event listeners
+  listenForSchemaCreation(callback) { /* ... */ }
+  listenForAttestationCreation(callback) { /* ... */ }
+  listenForSignatures(attestationId, callback) { /* ... */ }
+  listenForAgreements(attestationId, callback) { /* ... */ }
+  listenForRevocations(callback) { /* ... */ }
+  
+  // Helper methods
+  hashSchema(schema) { /* ... */ }
+  hashAttestation(attestation) { /* ... */ }
+  hashRevocation(attestation) { /* ... */ }
+  async signMessage(hash) { /* ... */ }
+  formatSchema(internalSchema) { /* ... */ }
+  formatAttestation(internalAttestation) { /* ... */ }
+  decodeSchemaDefinition(encodedDefinition) { /* ... */ }
+  decodeSignatoryPolicy(encodedPolicy) { /* ... */ }
+  decodeAttestationResult(encodedResult) { /* ... */ }
+}
+```
+
+## React Integration Example
+
+Here's a simple example of integrating DaoSign with a React application:
+
+```jsx
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+import { DaoSignClient } from './DaoSignClient';
+
+function DaoSignApp() {
+  const [client, setClient] = useState(null);
+  const [account, setAccount] = useState(null);
+  const [schemas, setSchemas] = useState([]);
+  const [attestations, setAttestations] = useState([]);
+  
+  // Initialize client on component mount
+  useEffect(() => {
+    const initClient = async () => {
+      if (window.ethereum) {
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const address = await signer.getAddress();
+        
+        setAccount(address);
+        setClient(new DaoSignClient(signer, 'goerli'));
+      } else {
+        alert('Please install MetaMask to use this application');
+      }
+    };
+    
+    initClient();
+  }, []);
+  
+  // Load user's attestations when client and account are available
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (client && account) {
+        // For this example, we'll assume we know the schema IDs we want to check
+        const knownSchemaIds = [1, 2, 3]; // Replace with actual schema IDs
+        
+        // Load schemas
+        const schemaPromises = knownSchemaIds.map(id => client.getSchema(id));
+        const schemaResults = await Promise.all(schemaPromises);
+        setSchemas(schemaResults);
+        
+        // Load user's attestations for each schema
+        const attestationPromises = knownSchemaIds.map(id => 
+          client.getUserAttestations(id, account)
+        );
+        const allAttestations = await Promise.all(attestationPromises);
+        setAttestations(allAttestations.flat());
+      }
+    };
+    
+    loadUserData();
+  }, [client, account]);
+  
+  // Create a new schema
+  const createNewSchema = async () => {
+    if (!client) return;
+    
+    const newSchema = {
+      metadata: {
+        name: "Sample Agreement",
+        description: "A sample agreement for testing",
+        attestation_type: "agreement",
+        is_nft: true,
+        is_public: true,
+        is_revokable: true,
+        expire_in: 0, // Never expires
+        nft_name: "Sample Token",
+        nft_symbol: "SMPL"
+      },
+      schema_definition: [
+        { definition_type: "string", definition_name: "Party A" },
+        { definition_type: "string", definition_name: "Party B" },
+        { definition_type: "string", definition_name: "Agreement Terms" }
+      ],
+      signatory_policy: []
+    };
+    
+    try {
+      const schemaId = await client.createSchema(newSchema);
+      alert(`Schema created with ID: ${schemaId}`);
+      
+      // Refresh schemas
+      const updatedSchema = await client.getSchema(schemaId);
+      setSchemas([...schemas, updatedSchema]);
+    } catch (error) {
+      console.error("Error creating schema:", error);
+      alert(`Error: ${error.message}`);
+    }
+  };
+  
+  // Render component
+  return (
+    <div className="daoSign-app">
+      <h1>DaoSign Example</h1>
+      
+      {account ? (
+        <div>
+          <p>Connected Account: {account}</p>
+          
+          <h2>Your Schemas</h2>
+          <button onClick={createNewSchema}>Create New Schema</button>
+          <ul>
+            {schemas.map(schema => (
+              <li key={schema.schema_id}>
+                <strong>{schema.metadata.name}</strong> - {schema.metadata.description}
+              </li>
+            ))}
+          </ul>
+          
+          <h2>Your Attestations</h2>
+          <ul>
+            {attestations.map(attestation => (
+              <li key={attestation.attestation_id}>
+                Schema: {schemas.find(s => s.schema_id === attestation.schema_id)?.metadata.name || 'Unknown'}
+                <br />
+                Status: {attestation.is_revoked ? 'Revoked' : 'Active'}
+                <br />
+                Created: {new Date(attestation.created_at * 1000).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p>Please connect your wallet to use this application.</p>
+      )}
+    </div>
+  );
+}
+
+export default DaoSignApp;
+```
+
+## Best Practices
+
+When integrating DaoSign with Web3 applications:
+
+1. **Signature Creation**: Match your hashing logic exactly with the contract's verification logic
+2. **Error Handling**: Provide clear error messages for failed transactions
+3. **Gas Estimation**: Estimate gas costs before sending transactions
+4. **Event Listening**: Use events to track state changes rather than polling
+5. **Data Validation**: Validate user inputs before sending them to the blockchain
+6. **User Experience**: Guide users through the wallet signing process with clear instructions
+7. **Security**: Never expose private keys; rely on wallet providers for signing
+8. **Abstraction**: Create a clean API layer that abstracts blockchain complexities
+9. **Testing**: Test thoroughly on testnets before deploying to production
+10. **Fallbacks**: Implement graceful fallbacks for network issues or transaction failures

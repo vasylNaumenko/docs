@@ -1,0 +1,177 @@
+---
+title: 'Attestations'
+description: 'Document instances with filled data'
+---
+
+# Attestations
+
+Attestations are concrete instances of schemas with filled data. They represent actual documents that can be signed and verified on the blockchain.
+
+## What is an Attestation?
+
+An attestation is a specific document created from a schema template. It includes:
+
+- **Document Data**: Values for each field defined in the schema
+- **Creator**: The entity that created the document
+- **Recipient**: The entity the document is addressed to
+- **Signatories**: Entities required to sign the document
+- **Signatures**: Cryptographic proofs of approval
+
+## Attestation Structure
+
+An attestation in DaoSign consists of several key components:
+
+### Attestation Data
+
+```typescript
+interface Attestation {
+  attestation_id: uint256;      // Unique identifier
+  schema_id: uint256;           // Reference to the schema it's based on
+  attestation_result: AttestationResult[]; // Data fields with values
+  creator: address;             // Creator's wallet address
+  recipient: address;           // Recipient's wallet address
+  created_at: uint32;           // Creation timestamp
+  signatories: address[];       // List of addresses required to sign
+  signature: bytes;             // Creator's signature
+}
+```
+
+### Attestation Result
+
+Each field in an attestation contains:
+
+```typescript
+interface AttestationResult {
+  attestation_result_type: string; // Data type matching schema definition
+  name: string;                    // Field name matching schema definition
+  value: bytes;                    // The actual data value
+}
+```
+
+## Internal Attestation
+
+Once stored on the blockchain, an attestation is extended with additional properties:
+
+```typescript
+interface InternalAttestation {
+  // All properties from Attestation, plus:
+  is_revoked: boolean;          // Whether the attestation has been revoked
+  revoked_at: uint32;           // Timestamp of revocation (if applicable)
+  revoke_signature: bytes;      // Signature for revocation (if applicable)
+}
+```
+
+## Attestation Lifecycle
+
+Attestations follow a lifecycle:
+
+1. **Creation**: An attestation is created from a schema with filled data
+2. **Signing**: Required signatories provide their signatures
+3. **Agreement**: When all signatures are collected, a Proof of Agreement is formed
+4. **Tokenization**: Optionally, the attestation can be represented as an NFT
+5. **Revocation**: If allowed by the schema, the attestation can be revoked
+
+## Proof of Signature (PoS)
+
+When a signatory signs an attestation, a Proof of Signature is created:
+
+```typescript
+interface ProofOfSignature {
+  attestation_id: uint256;      // Reference to the attestation
+  creator: address;             // Signatory's address
+  created_at: uint32;           // Timestamp of signing
+  signature: bytes;             // Cryptographic signature
+}
+```
+
+## Proof of Agreement (PoA)
+
+When all required signatures are collected, a Proof of Agreement is formed:
+
+```typescript
+interface ProofOfAgreement {
+  attestation_id: uint256;      // Reference to the attestation
+  signatures: bytes[];          // Collection of all signatures
+}
+```
+
+## Creating an Attestation
+
+To create an attestation:
+
+1. Select a schema to base the attestation on
+2. Fill in data for all fields defined in the schema
+3. Specify the recipient and required signatories
+4. Submit the attestation to the blockchain
+
+Example:
+```javascript
+const loanAgreement = {
+  schema_id: 123, // ID of a loan agreement schema
+  attestation_result: [
+    {
+      attestation_result_type: "string",
+      name: "Lender Name",
+      value: "First National Bank"
+    },
+    {
+      attestation_result_type: "string",
+      name: "Borrower Name",
+      value: "Jane Smith"
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Loan Amount",
+      value: "50000"
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Interest Rate",
+      value: "5"
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Term in Months",
+      value: "60"
+    }
+  ],
+  recipient: "0xabcd...", // Borrower's address
+  signatories: ["0x1234...", "0xabcd..."] // Lender and borrower addresses
+};
+
+// Create the attestation on blockchain
+const attestationId = await daoSign.createAttestation(loanAgreement);
+```
+
+## Signing an Attestation
+
+Each required signatory must sign the attestation:
+
+```javascript
+// Connect with the signatory's wallet
+await daoSign.connect(signatoryWallet);
+
+// Sign the attestation
+await daoSign.signAttestation(attestationId);
+```
+
+## Revoking an Attestation
+
+If allowed by the schema, the creator can revoke an attestation:
+
+```javascript
+// Only the creator can revoke
+await daoSign.connect(creatorWallet);
+
+// Revoke the attestation
+await daoSign.revokeAttestation(attestationId);
+```
+
+## Attestation Best Practices
+
+- **Verify data**: Double-check all data before creating attestations
+- **Clear signatories**: Make sure all required signatories are clearly identified
+- **Explain process**: Ensure signatories understand what they're signing
+- **Consider privacy**: Be cautious about including sensitive data
+- **Plan for revocation**: Consider whether attestations should be revocable
+- **Backup data**: While attestations are on-chain, maintain off-chain backups of critical documents

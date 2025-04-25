@@ -1,0 +1,242 @@
+---
+title: 'Creating an Attestation'
+description: 'Step-by-step guide to create a document instance'
+---
+
+# Creating an Attestation
+
+This tutorial explains how to create an attestation in DaoSign. An attestation is a specific document instance based on a schema template, filled with actual data.
+
+## Prerequisites
+
+- An Ethereum wallet (like MetaMask)
+- The DaoSign client library installed
+- A schema ID for the document type you want to create
+- Connection to an Ethereum network
+
+## Step 1: Connect to DaoSign
+
+First, initialize the DaoSign client and connect your wallet:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+// Initialize client
+const daoSign = new DaoSignClient({
+  provider: window.ethereum,
+  network: 'goerli' // Or your preferred network
+});
+
+// Connect wallet
+await daoSign.connect();
+```
+
+## Step 2: Get Schema Information
+
+Before creating an attestation, you should understand the schema structure:
+
+```javascript
+// Schema ID you want to use
+const schemaId = 42; // Replace with your actual schema ID
+
+// Get schema details
+const schema = await daoSign.getSchema(schemaId);
+
+// Check schema fields to understand what data you need to provide
+console.log('Schema name:', schema.metadata.name);
+console.log('Required fields:', schema.schema_definition.map(field => {
+  return `${field.definition_name} (${field.definition_type})`;
+}));
+```
+
+## Step 3: Prepare Attestation Data
+
+Create the attestation data based on the schema definition:
+
+```javascript
+// Example for an employment agreement schema
+const attestationData = [
+  {
+    attestation_result_type: "string",
+    name: "Employer Name",
+    value: "Acme Corporation"
+  },
+  {
+    attestation_result_type: "string",
+    name: "Employee Name",
+    value: "John Doe"
+  },
+  {
+    attestation_result_type: "string",
+    name: "Position",
+    value: "Software Engineer"
+  },
+  {
+    attestation_result_type: "uint256",
+    name: "Start Date",
+    value: "1682899200" // Unix timestamp for May 1, 2023
+  },
+  {
+    attestation_result_type: "uint256",
+    name: "Salary",
+    value: "100000"
+  }
+];
+
+// Important: Ensure all field names and types match exactly with the schema definition
+```
+
+## Step 4: Define Signatories
+
+Specify who needs to sign this attestation:
+
+```javascript
+// For a document that needs signatures from both employer and employee
+const signatories = [
+  "0x1234567890abcdef1234567890abcdef12345678", // Employer address
+  "0xabcdef1234567890abcdef1234567890abcdef12"  // Employee address
+];
+
+// For a document that doesn't need signatures (e.g., a certificate)
+// You can use an empty array:
+// const signatories = [];
+```
+
+## Step 5: Create the Attestation
+
+Now, combine everything to create the attestation:
+
+```javascript
+// Prepare attestation object
+const attestation = {
+  schema_id: schemaId,
+  attestation_result: attestationData,
+  recipient: "0xabcdef1234567890abcdef1234567890abcdef12", // Document recipient
+  signatories: signatories,
+  created_at: Math.floor(Date.now() / 1000) // Current timestamp
+};
+
+// Create the attestation on blockchain
+try {
+  const attestationId = await daoSign.createAttestation(attestation);
+  console.log(`Attestation created successfully with ID: ${attestationId}`);
+  
+  // Save the attestation ID for reference
+  localStorage.setItem('employmentAgreementId', attestationId);
+} catch (error) {
+  console.error('Error creating attestation:', error);
+}
+```
+
+## Step 6: Verify Attestation Creation
+
+After creating the attestation, you can verify it was created correctly:
+
+```javascript
+// Get the attestation details
+const createdAttestation = await daoSign.getAttestation(attestationId);
+console.log('Attestation details:', createdAttestation);
+
+// Check status
+console.log('Is revoked:', createdAttestation.is_revoked);
+console.log('Required signatories:', createdAttestation.signatories.length);
+
+// Get current signatures
+const signatures = await daoSign.getProofsOfSignature(attestationId);
+console.log('Current signatures:', signatures.length);
+```
+
+## Complete Example
+
+Here's a complete example for creating an NDA attestation:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+async function createNDAAttestation() {
+  // Initialize client
+  const daoSign = new DaoSignClient({
+    provider: window.ethereum,
+    network: 'goerli'
+  });
+  
+  // Connect wallet
+  await daoSign.connect();
+  
+  // Schema ID for NDA template
+  const ndaSchemaId = 123; // Replace with your actual NDA schema ID
+  
+  // Recipient and signatory addresses
+  const companyAddress = "0x1234567890abcdef1234567890abcdef12345678";
+  const consultantAddress = "0xabcdef1234567890abcdef1234567890abcdef12";
+  
+  // Prepare NDA attestation data
+  const ndaAttestation = {
+    schema_id: ndaSchemaId,
+    attestation_result: [
+      {
+        attestation_result_type: "string",
+        name: "Disclosing Party",
+        value: "Acme Corporation"
+      },
+      {
+        attestation_result_type: "string",
+        name: "Receiving Party",
+        value: "John Doe Consulting"
+      },
+      {
+        attestation_result_type: "string",
+        name: "Purpose of Disclosure",
+        value: "Software development project collaboration"
+      },
+      {
+        attestation_result_type: "string",
+        name: "Definition of Confidential Information",
+        value: "All code, design documents, and business strategy materials shared during the project"
+      },
+      {
+        attestation_result_type: "uint256",
+        name: "Effective Date",
+        value: Math.floor(Date.now() / 1000).toString() // Current timestamp
+      },
+      {
+        attestation_result_type: "uint256",
+        name: "Term (months)",
+        value: "24"
+      }
+    ],
+    recipient: consultantAddress,
+    signatories: [companyAddress, consultantAddress]
+  };
+  
+  // Create attestation
+  try {
+    const attestationId = await daoSign.createAttestation(ndaAttestation);
+    console.log(`NDA Attestation created with ID: ${attestationId}`);
+    
+    // Notify signatories (this would be implemented in your application)
+    console.log(`Notification needed for signatories: ${ndaAttestation.signatories.join(', ')}`);
+    
+    return attestationId;
+  } catch (error) {
+    console.error('Error creating NDA attestation:', error);
+    throw error;
+  }
+}
+
+// Call the function
+createNDAAttestation()
+  .then(attestationId => console.log('Success! Attestation ID:', attestationId))
+  .catch(error => console.error('Failed:', error));
+```
+
+## Next Steps
+
+After creating an attestation, the next steps typically are:
+
+1. Notify all required signatories that there's a document waiting for their signature
+2. [Guide signatories through the signing process](/tutorials/signing-attestation)
+3. Monitor the attestation for all required signatures
+4. Once all signatures are collected, a Proof of Agreement is automatically created
+
+Remember that attestations are tied to the schema they're based on, so any rules defined in the schema (like expiration or revocation policies) apply to your attestation.

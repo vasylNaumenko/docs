@@ -1,0 +1,270 @@
+---
+title: 'Signing an Attestation'
+description: 'Step-by-step guide to sign a document'
+---
+
+# Signing an Attestation
+
+This tutorial guides you through the process of signing an attestation in DaoSign. Signing creates a cryptographic proof that you have reviewed and approved a document.
+
+## Prerequisites
+
+- An Ethereum wallet (like MetaMask)
+- The DaoSign client library installed
+- A valid attestation ID that requires your signature
+- Your address must be in the attestation's signatories list
+- Connection to an Ethereum network
+
+## Step 1: Connect to DaoSign
+
+First, initialize the DaoSign client and connect your wallet:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+// Initialize client
+const daoSign = new DaoSignClient({
+  provider: window.ethereum,
+  network: 'goerli' // Or your preferred network
+});
+
+// Connect wallet
+await daoSign.connect();
+
+// Get current address
+const currentAddress = await daoSign.getAddress();
+console.log('Connected address:', currentAddress);
+```
+
+## Step 2: Verify the Attestation
+
+Before signing, you should verify the attestation details:
+
+```javascript
+// Attestation ID you need to sign
+const attestationId = 42; // Replace with actual attestation ID
+
+// Get attestation details
+try {
+  const attestation = await daoSign.getAttestation(attestationId);
+  
+  // Check if attestation exists
+  if (!attestation) {
+    throw new Error('Attestation not found');
+  }
+  
+  // Check if attestation is revoked
+  if (attestation.is_revoked) {
+    throw new Error('This attestation has been revoked');
+  }
+  
+  // Verify you're listed as a signatory
+  const isSignatory = attestation.signatories.includes(currentAddress);
+  if (!isSignatory) {
+    throw new Error('You are not listed as a signatory for this attestation');
+  }
+  
+  // Check if you've already signed
+  const signatures = await daoSign.getProofsOfSignature(attestationId);
+  const hasAlreadySigned = signatures.some(sig => sig.creator.toLowerCase() === currentAddress.toLowerCase());
+  if (hasAlreadySigned) {
+    throw new Error('You have already signed this attestation');
+  }
+  
+  // Get the schema to understand what you're signing
+  const schema = await daoSign.getSchema(attestation.schema_id);
+  console.log('Document type:', schema.metadata.name);
+  
+  // Display attestation content for review
+  console.log('Document content:');
+  attestation.attestation_result.forEach(field => {
+    console.log(`${field.name}: ${field.value}`);
+  });
+  
+} catch (error) {
+  console.error('Error verifying attestation:', error);
+  // Show error to user and stop the signing process
+  return;
+}
+```
+
+## Step 3: Sign the Attestation
+
+After verifying the attestation, you can sign it:
+
+```javascript
+// Sign the attestation
+try {
+  await daoSign.signAttestation(attestationId);
+  console.log('Attestation signed successfully!');
+  
+  // Get updated signature list
+  const updatedSignatures = await daoSign.getProofsOfSignature(attestationId);
+  console.log(`Total signatures: ${updatedSignatures.length}`);
+  
+  // Check if all signatures have been collected
+  const attestation = await daoSign.getAttestation(attestationId);
+  const allSigned = updatedSignatures.length === attestation.signatories.length;
+  if (allSigned) {
+    console.log('All required signatures collected! Proof of Agreement is complete.');
+    
+    // Check if an NFT was created
+    const schema = await daoSign.getSchema(attestation.schema_id);
+    if (schema.metadata.is_nft) {
+      console.log('An NFT representing this agreement has been created.');
+    }
+  } else {
+    console.log(`Waiting for ${attestation.signatories.length - updatedSignatures.length} more signatures.`);
+  }
+} catch (error) {
+  console.error('Error signing attestation:', error);
+}
+```
+
+## Step 4: Verify Signature Status
+
+You can check the status of all signatures for the attestation:
+
+```javascript
+// Get all signatures
+const signatures = await daoSign.getProofsOfSignature(attestationId);
+
+// Show all signatories and their status
+const attestation = await daoSign.getAttestation(attestationId);
+const signatoryStatus = attestation.signatories.map(address => {
+  const hasSigned = signatures.some(sig => sig.creator.toLowerCase() === address.toLowerCase());
+  return {
+    address,
+    signed: hasSigned,
+    timestamp: hasSigned 
+      ? signatures.find(sig => sig.creator.toLowerCase() === address.toLowerCase()).created_at
+      : null
+  };
+});
+
+console.log('Signatory status:', signatoryStatus);
+
+// Check if a Proof of Agreement exists
+const agreements = await daoSign.getProofsOfAgreement(attestationId);
+if (agreements.length > 0) {
+  console.log('Proof of Agreement exists:', agreements[0]);
+}
+```
+
+## Complete Example
+
+Here's a complete example for signing an NDA attestation:
+
+```javascript
+import { DaoSignClient } from 'daosign-client';
+
+async function signNDAAttestation(attestationId) {
+  // Initialize client
+  const daoSign = new DaoSignClient({
+    provider: window.ethereum,
+    network: 'goerli'
+  });
+  
+  // Connect wallet
+  await daoSign.connect();
+  const currentAddress = await daoSign.getAddress();
+  
+  try {
+    // 1. Verify the attestation
+    const attestation = await daoSign.getAttestation(attestationId);
+    
+    // Verify attestation exists and is not revoked
+    if (!attestation) throw new Error('Attestation not found');
+    if (attestation.is_revoked) throw new Error('Attestation has been revoked');
+    
+    // Verify current user is a signatory
+    if (!attestation.signatories.includes(currentAddress)) {
+      throw new Error('You are not listed as a signatory for this document');
+    }
+    
+    // Check if already signed
+    const signatures = await daoSign.getProofsOfSignature(attestationId);
+    if (signatures.some(sig => sig.creator.toLowerCase() === currentAddress.toLowerCase())) {
+      throw new Error('You have already signed this document');
+    }
+    
+    // Get schema details for reference
+    const schema = await daoSign.getSchema(attestation.schema_id);
+    console.log(`Preparing to sign: ${schema.metadata.name}`);
+    
+    // Display document details for confirmation
+    console.log('Document details:');
+    attestation.attestation_result.forEach(field => {
+      console.log(`- ${field.name}: ${field.value}`);
+    });
+    
+    // 2. Sign the attestation
+    console.log('Signing document...');
+    await daoSign.signAttestation(attestationId);
+    console.log('Signature successful!');
+    
+    // 3. Check updated signature status
+    const updatedSignatures = await daoSign.getProofsOfSignature(attestationId);
+    const remainingSignatures = attestation.signatories.length - updatedSignatures.length;
+    
+    if (remainingSignatures === 0) {
+      console.log('All signatures collected. Document is now fully executed!');
+      
+      // Check for Proof of Agreement
+      const agreements = await daoSign.getProofsOfAgreement(attestationId);
+      if (agreements.length > 0) {
+        console.log('Proof of Agreement has been created.');
+      }
+    } else {
+      console.log(`Waiting for ${remainingSignatures} more signature(s).`);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error during signing process:', error);
+    throw error;
+  }
+}
+
+// Call the function
+const attestationId = 123; // Replace with actual attestation ID
+signNDAAttestation(attestationId)
+  .then(() => console.log('Signing process completed'))
+  .catch(error => console.error('Signing failed:', error.message));
+```
+
+## Signature Policy Requirements
+
+Remember that if the schema has a signatory policy, you must meet those requirements to sign. For example, if the policy requires you to have a KYC attestation, you must have that attestation before you can sign.
+
+You can check if you meet the requirements:
+
+```javascript
+// Get the schema for the attestation
+const schema = await daoSign.getSchema(attestation.schema_id);
+
+// Check if there are signatory policies
+if (schema.signatory_policy && schema.signatory_policy.length > 0) {
+  try {
+    // This will throw an error if you don't meet the requirements
+    await daoSign.validateSignatoryPolicy(schema.schema_id, currentAddress);
+    console.log('You meet all signatory policy requirements.');
+  } catch (error) {
+    console.error('You do not meet the signatory policy requirements:', error);
+    // Show requirements to the user
+    schema.signatory_policy.forEach(policy => {
+      console.log(`Required: ${policy.signatory_description}`);
+      console.log(`Schema IDs needed: ${policy.required_schema_id.join(', ')}`);
+    });
+  }
+}
+```
+
+## Next Steps
+
+After signing an attestation, you may want to:
+
+1. Notify other signatories that you've signed the document
+2. Monitor the attestation for completion of all signatures
+3. If all signatures are collected, access the [Proof of Agreement](/core-concepts/signatures#proof-of-agreement-poa)
+4. If the schema has `is_nft` enabled, check for the created NFT
