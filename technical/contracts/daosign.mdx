@@ -1,47 +1,65 @@
 ---
 title: 'DaoSign Contract'
-description: 'Main contract implementation for the DaoSign protocol'
+description: 'Core smart contract for the DaoSign protocol'
 ---
 
 # DaoSign Contract
 
-The `DaoSign.sol` contract is the core implementation of the DaoSign protocol. It manages schemas, attestations, proofs of signatures, and agreements.
+The `DaoSign.sol` contract is the core implementation of the DaoSign protocol. It manages schemas, attestations, signatures, and agreement proofs on the Ethereum blockchain.
 
 ## Contract Overview
 
 ```solidity
 contract DaoSign is IDaoSign, Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    // ...
+    // State variables
+    uint256 public schema_id;
+    uint256 public attestation_id;
+    address public daosign_factory;
+
+    // Mappings and other storage
+    mapping(uint256 => address) public collection_by_schema;
+    mapping(uint256 => InternalSchema) private schema_by_id;
+    mapping(uint256 => InternalAttestation) private attestation_by_id;
+    mapping(uint256 => ProofOfSignature[]) private proofs_of_signature;
+    mapping(uint256 => ProofOfAgreement[]) private proofs_of_agreement;
+    mapping(uint256 => mapping(address => bool)) private signed_attestation;
+    mapping(uint256 => mapping(address => InternalAttestation[])) private user_attestations;
+    
+    // Core functions
+    function store_schema(Schema memory s) external override;
+    function store_attestation(Attestation memory a) external override;
+    function store_pos(uint256 _attestation_id, bytes memory signature) external override;
+    function store_revoke(uint256 _attestation_id, bytes memory revoke_signature) external override;
+    
+    // ... other functions
 }
 ```
 
-This contract inherits from:
-- `IDaoSign`: The interface defining the required functionality
-- `Initializable`: OpenZeppelin contract for proxy initialization
-- `OwnableUpgradeable`: OpenZeppelin contract for ownership management
-- `UUPSUpgradeable`: OpenZeppelin contract for upgradeable proxy pattern
+The contract inherits from:
+- `IDaoSign`: Interface defining the core functionality
+- `Initializable`: OpenZeppelin utility for initialization pattern
+- `OwnableUpgradeable`: Access control for administrative functions
+- `UUPSUpgradeable`: Upgrade pattern for contract evolution
 
 ## State Variables
 
-```solidity
-// Counters for schemas and attestations
-uint256 public schema_id;
-uint256 public attestation_id;
+- `schema_id`: Counter for schema identifiers
+- `attestation_id`: Counter for attestation identifiers
+- `daosign_factory`: Address of the factory contract that creates NFT collections
 
-address public daosign_factory;
+## Core Mappings
 
-// Mappings
-mapping(uint256 => address) public collection_by_schema; // schema_id => nft contract
+- `collection_by_schema`: Maps schema IDs to their associated NFT collection addresses
+- `schema_by_id`: Stores schema data keyed by schema ID
+- `attestation_by_id`: Stores attestation data keyed by attestation ID
+- `proofs_of_signature`: Stores signature proofs for attestations
+- `proofs_of_agreement`: Stores agreement proofs for fully signed attestations
+- `signed_attestation`: Tracks whether an address has signed a specific attestation
+- `user_attestations`: Maps users to their attestations for each schema
 
-mapping(uint256 => InternalSchema) private schema_by_id; // schema_id => InternalSchema
-mapping(uint256 => InternalAttestation) private attestation_by_id; // attestation_id => InternalAttestation
-mapping(uint256 => ProofOfSignature[]) private proofs_of_signature; // attestation_id => store_pos
-mapping(uint256 => ProofOfAgreement[]) private proofs_of_agreement; // attestation_id => storeProofOfAgreement
-mapping(uint256 => mapping(address => bool)) private signed_attestation; // attestation_id  => user => signed
-mapping(uint256 => mapping(address => InternalAttestation[])) private user_attestations; // schema_id  => user => InternalAttestation[]
-```
+## Core Functions
 
-## Initialization
+### Initialization
 
 ```solidity
 function initialize(address _daosign_factory) external virtual initializer {
@@ -54,38 +72,16 @@ function initialize(address _daosign_factory) external virtual initializer {
 }
 ```
 
-The `initialize` function sets up the contract with:
-- The owner (called via the `__Ownable_init` function)
-- UUPS upgrade functionality (called via the `__UUPSUpgradeable_init` function)
-- The DaoSignTokenFactory address for NFT creation
-- Initial counters for schema and attestation IDs
+Initializes the contract with the address of the NFT factory and sets the initial counter values.
 
-## Upgrade Authorization
-
-```solidity
-function _authorizeUpgrade(address) internal override virtual onlyOwner {}
-```
-
-This function restricts contract upgrades to the owner only, implementing the UUPS upgrade pattern.
-
-## Core Functions
-
-### Store Schema
+### Schema Creation
 
 ```solidity
 function store_schema(Schema memory input_schema) external {
-    // Check if the sender of the request is the creator of the schema
-    if (input_schema.metadata.creator != msg.sender) revert UnauthorizedSchemaCreator(msg.sender);
-
-    // Ensure that the schema's definition is not empty
-    if (input_schema.schema_definition.length == 0) revert EmptySchemaDefinition();
-
-    //Wrong signature
-    if (!verify_signature(msg.sender, input_schema, input_schema.signature)) revert InvalidSignature();
-
-    InternalSchema memory s = _get_internal_schema(input_schema);
-
-    //check if user wants to create nft
+    // Validation and processing
+    // ...
+    
+    // Create NFT collection if needed
     if (s.metadata.is_nft) {
         address collection = DaoSignTokenFactory(daosign_factory).deploy(
             address(this),
@@ -94,133 +90,54 @@ function store_schema(Schema memory input_schema) external {
         );
         collection_by_schema[schema_id] = collection;
     }
-
-    s.metadata.created_at = uint32(block.timestamp);
-
-    // Store the new schema in the mapping using the current schema ID
+    
+    // Store schema and emit event
     schema_by_id[schema_id] = s;
-
     emit SchemaCreated(schema_id);
     schema_id++;
 }
 ```
 
-This function creates a new schema in the system:
-1. Verifies the sender is the schema creator
-2. Ensures the schema definition is not empty
-3. Validates the signature
-4. Creates an NFT collection if specified
-5. Stores the schema with a timestamp
-6. Emits a `SchemaCreated` event
-7. Increments the schema ID counter
+Creates a new schema with the provided metadata, definition, and signatory policies. If the schema is configured to use NFTs, a new NFT collection will be deployed.
 
-### Store Attestation
+### Attestation Creation
 
 ```solidity
 function store_attestation(Attestation memory input_attestation) external {
-    //Wrong signature
-    if (!verify_signature(msg.sender, input_attestation, input_attestation.signature)) revert InvalidSignature();
-
-    InternalAttestation memory a = _get_internal_attestation(input_attestation);
-    // Validate the schema associated with the attestation and retrieve its details
-    InternalSchema memory s = validate_and_get_schema(a.schema_id);
-
-    // Validate the attestation against the schema specs
-    _validate_attestation(s, a);
-
+    // Validation and processing
+    // ...
+    
+    // Mint NFT if appropriate
     if (s.metadata.is_nft && s.signatory_policy.length == 0 && a.recipient != address(0))
         _mint_token(a.recipient, a.attestation_id, a.schema_id);
-
-    // Associate the attestation with the recipient's address
+    
+    // Associate attestation with users
     if (a.recipient != address(0)) user_attestations[a.schema_id][a.recipient].push(a);
     for (uint i = 0; i < a.signatories.length; i++) {
         if (a.signatories[i] != a.recipient) user_attestations[a.schema_id][a.signatories[i]].push(a);
     }
-
-    // Store the attestation in the mapping using the current attestation ID
+    
+    // Store attestation and emit event
     attestation_by_id[attestation_id] = a;
-
     emit AttestationCreated(attestation_id);
     attestation_id++;
 }
 ```
 
-This function creates a new attestation:
-1. Validates the signature
-2. Retrieves the associated schema
-3. Validates the attestation against the schema
-4. Mints an NFT if required (for schemas without signatory policy)
-5. Associates the attestation with the recipient and signatories
-6. Stores the attestation
-7. Emits an `AttestationCreated` event
-8. Increments the attestation ID counter
+Creates a new attestation based on a schema, with filled data and specified signatories. If the schema is configured for NFTs and doesn't require signatures, an NFT can be minted immediately.
 
-### Store Revocation
-
-```solidity
-function store_revoke(uint256 _attestation_id, bytes memory revoke_signature) external {
-    // Validate and retrieve the attestation specified by the given ID
-    InternalAttestation memory a = validate_and_get_attestation(_attestation_id);
-    InternalSchema memory s = validate_and_get_schema(a.schema_id);
-
-    if (s.metadata.is_revokable == false) revert AttestationCantBeRevoked();
-
-    // Check if the sender is the original creator of the attestation before revoking it
-    if (a.creator != msg.sender) revert UnauthorizedAttestator(msg.sender);
-
-    // modify store_revoke status
-    a.is_revoked = true;
-    a.revoked_at = uint32(block.timestamp);
-    a.revoke_signature = revoke_signature;
-
-    //Wrong signature
-    if (!verify_signature(msg.sender, a, revoke_signature)) revert InvalidSignature();
-
-    //Burn user token
-    if (s.metadata.is_nft && s.signatory_policy.length == 0) _burn_token(a.attestation_id, a.schema_id);
-
-    // Remove the attestation from the user's list of attestations
-    _remove_user_attestation(a);
-
-    attestation_by_id[_attestation_id] = a;
-    emit Revoked(_attestation_id);
-}
-```
-
-This function revokes an existing attestation:
-1. Validates the attestation and schema
-2. Ensures the schema allows revocation
-3. Verifies the sender is the attestation creator
-4. Marks the attestation as revoked with a timestamp
-5. Validates the revocation signature
-6. Burns any associated NFT tokens
-7. Updates the attestation storage
-8. Emits a `Revoked` event
-
-### Store Proof of Signature
+### Signature Processing
 
 ```solidity
 function store_pos(uint256 _attestation_id, bytes memory signature) external {
-    // Check if the user has already signed the attestation
+    // Check if already signed
     if (signed_attestation[_attestation_id][msg.sender])
         revert AttestationAlreadySigned(msg.sender, _attestation_id);
-
-    // Validate and retrieve the attestation specified by the given ID
-    InternalAttestation memory a = validate_and_get_attestation(_attestation_id);
-
-    if (a.is_revoked == true) revert AttestationRevoked(_attestation_id);
-
-    if (!verify_signature(msg.sender, a.attestation_id, signature)) revert InvalidSignature();
-
-    // Ensure that the sender is recognized as a signatory for this attestation
-    if (!_is_signatory(a.signatories, msg.sender)) revert InvalidSignatoryAddress(msg.sender, _attestation_id);
-
-    // Validate the schema associated with the attestation and retrieve its details
-    InternalSchema memory s = validate_and_get_schema(a.schema_id);
-
-    _validate_signatory_policy(s, msg.sender);
-
-    // Store the proof of signature in the mapping associated with the attestation ID
+    
+    // Validation and processing
+    // ...
+    
+    // Store proof of signature
     proofs_of_signature[_attestation_id].push(
         ProofOfSignature({
             attestation_id: _attestation_id,
@@ -229,71 +146,55 @@ function store_pos(uint256 _attestation_id, bytes memory signature) external {
             signature: signature
         })
     );
-
-    // Retrieve all proof of signatures associated with the attestation
-    ProofOfSignature[] memory proofs = get_proof_of_signature(_attestation_id);
-
-    // Ensure that the number of provided signatures matches the required number of signatories
+    
+    // Check if all signatories have signed
     if (a.signatories.length == proofs.length) {
         _store_poa(a, s);
     }
-
-    // Mark that the user has signed this attestation
+    
+    // Mark attestation as signed by this user
     signed_attestation[_attestation_id][msg.sender] = true;
     emit ProofOfSignatureCreated(_attestation_id);
 }
 ```
 
-This function adds a signature to an attestation:
-1. Checks if the user has already signed
-2. Validates the attestation and ensures it's not revoked
-3. Verifies the signature
-4. Ensures the signer is a valid signatory
-5. Validates the signatory policy requirements
-6. Stores the proof of signature
-7. If all signatures are collected, creates a proof of agreement
-8. Marks the attestation as signed by this user
-9. Emits a `ProofOfSignatureCreated` event
+Records a signature for an attestation. If all required signatories have signed, a Proof of Agreement will be created automatically.
 
-### Store Proof of Agreement
+### Revocation Processing
 
 ```solidity
-function _store_poa(InternalAttestation memory a, InternalSchema memory s) private {
-    // Retrieve all proof of signatures associated with the attestation
-    ProofOfSignature[] memory proofs = get_proof_of_signature(a.attestation_id);
-
-    if (s.metadata.is_nft) _mint_token(address(this), a.attestation_id, a.schema_id);
-
-    bytes[] memory signatory_proofs = new bytes[](proofs.length);
-    for (uint i = 0; i < proofs.length; ) {
-        signatory_proofs[i] = proofs[i].signature;
-        // prettier-ignore
-        unchecked { i++; }
-    }
-
-    // Store the proof of agreement with the associated signatures
-    proofs_of_agreement[a.attestation_id].push(
-        ProofOfAgreement({attestation_id: a.attestation_id, signatures: signatory_proofs})
-    );
+function store_revoke(uint256 _attestation_id, bytes memory revoke_signature) external {
+    // Validation and processing
+    // ...
+    
+    // Check if revocation is allowed
+    if (s.metadata.is_revokable == false) revert AttestationCantBeRevoked();
+    
+    // Check if caller is the attestation creator
+    if (a.creator != msg.sender) revert UnauthorizedAttestator(msg.sender);
+    
+    // Update revocation status
+    a.is_revoked = true;
+    a.revoked_at = uint32(block.timestamp);
+    a.revoke_signature = revoke_signature;
+    
+    // Burn NFT if needed
+    if (s.metadata.is_nft && s.signatory_policy.length == 0) _burn_token(a.attestation_id, a.schema_id);
+    
+    // Update storage
+    _remove_user_attestation(a);
+    attestation_by_id[_attestation_id] = a;
+    emit Revoked(_attestation_id);
 }
 ```
 
-This private function creates a proof of agreement:
-1. Retrieves all proofs of signature
-2. If NFT is enabled, mints a token to the contract
-3. Collects all signatures
-4. Creates and stores the proof of agreement
+Revokes an attestation if allowed by the schema. If the attestation was represented by an NFT, the token will be burned.
 
-## Helper Functions
+## NFT Integration
 
-### NFT Token Handling
+The contract integrates with ERC-721 tokens through two key functions:
 
 ```solidity
-function onERC721Received(address, address, uint256 tokenId, bytes calldata) external override returns (bytes4) {
-    emit ProofOfAgreementCreated(tokenId);
-    return this.onERC721Received.selector;
-}
-
 function _mint_token(address to, uint256 _token_id, uint256 _schema_id) private {
     address collection = collection_by_schema[_schema_id];
     DaoSignToken(collection).safeMint(to, _token_id, "");
@@ -305,59 +206,44 @@ function _burn_token(uint256 _attestation_id, uint256 _schema_id) private {
 }
 ```
 
-These functions handle NFT operations:
-- `onERC721Received`: Handles receipt of NFT tokens and emits an event
-- `_mint_token`: Mints an NFT to the specified address
-- `_burn_token`: Burns an NFT when an attestation is revoked
+These functions handle the minting and burning of NFTs that represent attestations.
 
-### Validation Functions
+## Read Functions
 
-```solidity
-function validate_and_get_schema(uint256 id) public view returns (InternalSchema memory) {
-    if (id >= schema_id) revert SchemaDoesNotExist(id);
-    return schema_by_id[id];
-}
-
-function validate_and_get_attestation(uint256 id) public view returns (InternalAttestation memory) {
-    if (id >= attestation_id) revert AttestationDoesNotExist(id);
-    return attestation_by_id[id];
-}
-```
-
-These functions retrieve and validate schemas and attestations:
-- `validate_and_get_schema`: Ensures a schema exists and returns it
-- `validate_and_get_attestation`: Ensures an attestation exists and returns it
-
-### Query Functions
+The contract provides several view functions to query state:
 
 ```solidity
-function get_user_attestations(uint256 _schemaID, address user) public view returns (InternalAttestation[] memory) {
-    return user_attestations[_schemaID][user];
-}
-
-function get_proof_of_signature(uint256 _attestation_id) public view returns (ProofOfSignature[] memory) {
-    return proofs_of_signature[_attestation_id];
-}
-
-function get_proof_of_agreement(uint256 _attestation_id) public view returns (ProofOfAgreement[] memory) {
-    return proofs_of_agreement[_attestation_id];
-}
+function validate_and_get_schema(uint256 id) public view returns (InternalSchema memory);
+function validate_and_get_attestation(uint256 id) public view returns (InternalAttestation memory);
+function get_user_attestations(uint256 _schemaID, address user) public view returns (InternalAttestation[] memory);
+function get_proof_of_signature(uint256 _attestation_id) public view returns (ProofOfSignature[] memory);
+function get_proof_of_agreement(uint256 _attestation_id) public view returns (ProofOfAgreement[] memory);
 ```
 
-These functions allow querying various aspects of the protocol:
-- `get_user_attestations`: Returns attestations for a user under a specific schema
-- `get_proof_of_signature`: Returns all signatures for an attestation
-- `get_proof_of_agreement`: Returns agreement proofs for an attestation
+These functions allow clients to retrieve schemas, attestations, signatures, and agreement proofs.
 
-### Signatory Policy Validation
+## Validation Logic
+
+The contract includes extensive validation:
+
+- Ensuring schema creators are authorized
+- Validating attestation data against schema structure
+- Verifying signatures and signing authority
+- Checking schema expiration
+- Enforcing signatory policies
+
+## Signatory Policy Enforcement
+
+One of the most powerful features is the ability to enforce policies for signatories:
 
 ```solidity
 function _validate_signatory_policy(InternalSchema memory schema, address signer) private view {
-    // Retrieve the count of signatory policies defined in the schema
+    // Get count of policies
     uint256 policy_count = schema.signatory_policy.length;
-
+    
     if (policy_count == 0) return;
-
+    
+    // Check each policy
     for (uint i = 0; i < policy_count; i++) {
         SignatoryPolicy memory policy = get_signatory_policy(schema.signatory_policy[i]);
         bool isSatisfied = (_is_policy_satisfied(policy, signer));
@@ -366,162 +252,33 @@ function _validate_signatory_policy(InternalSchema memory schema, address signer
 }
 
 function _is_policy_satisfied(SignatoryPolicy memory policy, address signer) private view returns (bool) {
-    uint256 required_attestation_count = policy.required_schema_id.length;
-    if (required_attestation_count == 0) return true;
-    bool result = false;
-
-    // Iterate over required schema IDs defined in policy
-    for (uint i = 0; i < required_attestation_count; ) {
-        bool has_attestation = (user_attestations[policy.required_schema_id[i]][signer].length > 0);
-
-        // AND
-        if (policy.operator == 0x01) {
-            if (i == 0) result = true; // Initialize result to true for AND
-
-            result = result && has_attestation; // All must be true
-            if (!result) break; // Fail early if any condition is false
-            // OR
-        } else if (policy.operator == 0x02) {
-            result = result || has_attestation; // At least one must be true
-            if (result) break; // Succeed early if any condition is true
-            // NOT
-        } else if (policy.operator == 0x03) {
-            if (i == 0) result = true; // Initialize result for NOT
-
-            result = result && !has_attestation; // Ensure none exist
-            if (!result) break; // Fail early if any condition fails
-        } else {
-            revert UnsupportedOperator();
-        }
-        // prettier-ignore
-        unchecked { i++; }
-    }
-
-    return result;
+    // Implementation of logical operators
+    // AND (0x01): All required attestations must exist
+    // OR (0x02): At least one required attestation must exist
+    // NOT (0x03): None of the attestations should exist
+    // ...
 }
 ```
 
-These functions validate that signatories meet the policy requirements:
-- `_validate_signatory_policy`: Checks if a signer satisfies all policy requirements
-- `_is_policy_satisfied`: Evaluates a single policy against a signer using logical operators
+This logic allows schemas to require that signatories have specific attestations before they can sign a new attestation, enabling complex trust and identity verification workflows.
 
-## Data Conversion Functions
+## Error Handling
+
+The contract uses custom errors for precise error reporting:
 
 ```solidity
-function _get_internal_attestation(
-    Attestation memory input_attestation
-) private view returns (InternalAttestation memory a) {
-    a = InternalAttestation({
-        attestation_id: input_attestation.attestation_id,
-        schema_id: input_attestation.schema_id,
-        attestation_result: encode_attestation_result(input_attestation.attestation_result),
-        creator: input_attestation.creator,
-        recipient: input_attestation.recipient,
-        created_at: uint32(block.timestamp),
-        signatories: input_attestation.signatories,
-        signature: input_attestation.signature,
-        is_revoked: false,
-        revoked_at: 0,
-        revoke_signature: ""
-    });
-}
-
-function _get_internal_schema(Schema memory input_schema) private view returns (InternalSchema memory s) {
-    s = InternalSchema({
-        schema_id: schema_id,
-        metadata: input_schema.metadata,
-        signatory_policy: encode_signatory_policy(input_schema.signatory_policy),
-        schema_definition: encode_schema_definition(input_schema.schema_definition),
-        signature: input_schema.signature
-    });
-}
+error UnauthorizedSchemaCreator(address caller);
+error EmptySchemaDefinition();
+error SchemaDoesNotExist(uint256 schemaID);
+error SchemaAlreadyExpired(uint256 createdAt, uint256 expireIn, uint256 currentTime);
+// ...and many more
 ```
 
-These functions convert between external and internal data structures:
-- `_get_internal_attestation`: Converts an external Attestation to an internal InternalAttestation
-- `_get_internal_schema`: Converts an external Schema to an internal InternalSchema
-
-## Attestation Validation
-
-```solidity
-function _validate_attestation(InternalSchema memory s, InternalAttestation memory a) private view {
-    // Ensure that if the schema is private, the sender is the creator of the attestation.
-    if (!s.metadata.is_public && a.creator != msg.sender) revert UnauthorizedAttestator(msg.sender);
-
-    // Check if the schema has expired based on its metadata
-    if (_is_schema_expired(s))
-        revert SchemaAlreadyExpired(s.metadata.created_at, s.metadata.expire_in, block.timestamp);
-
-    // Ensure that the length of attestation results matches the length of the schema definition
-    if (a.attestation_result.length != s.schema_definition.length)
-        revert AttestationLengthMismatch(a.attestation_result.length, s.schema_definition.length);
-
-    // Validate each attestation result against its corresponding schema definition
-    for (uint256 i = 0; i < s.schema_definition.length; i++) {
-        // decode schema Definition
-        SchemaDefinition memory schema_definition = get_schema_definition(s.schema_definition[i]);
-
-        //decode attestation result
-        AttestationResult memory attestation_result = get_attestation_result(a.attestation_result[i]);
-
-        // Verify that the attestation result matches the expected schema definition
-        _verify_attestation_result(schema_definition, attestation_result);
-    }
-}
-
-function _verify_attestation_result(SchemaDefinition memory sd, AttestationResult memory ar) private pure {
-    // Check that the names match between the schema definition and the attestation result
-    if (keccak256(bytes(sd.definition_name)) != keccak256(bytes(ar.name)))
-        revert AttestationNameMismatch(sd.definition_name, ar.name);
-
-    // Check that the types match between the schema definition and the attestation result
-    if (keccak256(bytes(sd.definition_type)) != keccak256(bytes(ar.attestation_result_type)))
-        revert AttestationTypeMismatch(sd.definition_type, ar.attestation_result_type);
-}
-```
-
-These functions validate attestations against their schemas:
-- `_validate_attestation`: Ensures an attestation complies with its schema
-- `_verify_attestation_result`: Verifies that individual fields match their definitions
-
-## Utility Functions
-
-```solidity
-function _is_schema_expired(InternalSchema memory s) private view returns (bool) {
-    return s.metadata.expire_in != 0 && (s.metadata.created_at + s.metadata.expire_in < block.timestamp);
-}
-
-function _is_signatory(address[] memory signatories, address user) private pure returns (bool) {
-    for (uint i = 0; i < signatories.length; i++) {
-        if (signatories[i] == user) return true;
-    }
-    return false;
-}
-
-function _remove_user_attestation(InternalAttestation memory a) private {
-    // Reference the user's attestations for the relevant schema and recipient
-    InternalAttestation[] storage user_attestations_array = user_attestations[a.schema_id][a.recipient];
-
-    // Iterate through the user's attestations to find the match
-    for (uint256 i = 0; i < user_attestations_array.length; i++) {
-        // Check if the attestation ID matches and remove it
-        if (user_attestations_array[i].attestation_id == a.attestation_id) {
-            user_attestations_array[i] = user_attestations_array[user_attestations_array.length - 1];
-            user_attestations_array.pop(); // Remove the last element
-            break; // Exit after removing the attestation
-        }
-    }
-}
-```
-
-These utility functions handle various operational tasks:
-- `_is_schema_expired`: Checks if a schema has passed its expiration date
-- `_is_signatory`: Verifies if a user is in the list of required signatories
-- `_remove_user_attestation`: Removes an attestation from a user's list when revoked
+These errors provide detailed information about what went wrong, making debugging and user feedback more effective.
 
 ## Events
 
-The DaoSign contract emits several events to track important state changes:
+The contract emits events for major state changes:
 
 ```solidity
 event SchemaCreated(uint256 schemaID);
@@ -531,32 +288,31 @@ event ProofOfSignatureCreated(uint256 attestationID);
 event ProofOfAgreementCreated(uint256 attestationID);
 ```
 
-These events allow external systems to track activities within the protocol and update their state accordingly.
+These events enable off-chain systems to track on-chain activity and provide user interfaces with real-time updates.
 
-## Error Handling
+## Usage Flows
 
-The contract defines numerous error types for specific failure conditions:
+### Creating and Using a Schema
 
-```solidity
-error UnauthorizedSchemaCreator(address caller);
-error EmptySchemaDefinition();
-error SchemaDoesNotExist(uint256 schemaID);
-error SchemaAlreadyExpired(uint256 createdAt, uint256 expireIn, uint256 currentTime);
-error AttestationDoesNotExist(uint256 attestationID);
-error UnauthorizedAttestator(address caller);
-error InvalidSignatoryAddress(address expectedAddress, uint256 attestationID);
-error AttestationAlreadySigned(address signer, uint256 attestationID);
-error AttestationRevoked(uint256 attestationID);
-error InsufficientSignatures(uint256 attestationID, uint256 required, uint256 provided);
-error InsufficientAttestations(address user);
-error AttestationLengthMismatch(uint256 attestationLength, uint256 expectedLength);
-error AttestationNameMismatch(string expectedName, string providedName);
-error AttestationTypeMismatch(string expectedType, string providedType);
-error AttestationCantBeRevoked();
-error MissingSignatoryPolicy();
-error MissingRequiredAttestation(address signatoryAddress, uint256 schemaID);
-error UnsupportedOperator();
-error InvalidSignature();
-```
+1. Define a schema with fields, metadata, and signatory policies
+2. Call `store_schema` to create the schema on the blockchain
+3. Receive the `SchemaCreated` event with the schema ID
 
-These specific error types help developers and users understand exactly what went wrong during operations.
+### Creating an Attestation
+
+1. Prepare attestation data based on a schema
+2. Call `store_attestation` to create the attestation
+3. Receive the `AttestationCreated` event with the attestation ID
+
+### Signing an Attestation
+
+1. Review the attestation details
+2. Sign the attestation data with your private key
+3. Call `store_pos` with the attestation ID and your signature
+4. Receive the `ProofOfSignatureCreated` event
+
+### Revoking an Attestation
+
+1. Prepare a revocation signature
+2. Call `store_revoke` with the attestation ID and revocation signature
+3. Receive the `Revoked` event

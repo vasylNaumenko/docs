@@ -1,379 +1,233 @@
 ---
-title: 'Security Considerations'
-description: 'Security best practices for using DaoSign'
+title: 'Security Best Practices'
+description: 'Recommendations for secure implementation of DaoSign'
 ---
 
-# Security Considerations
+# Security Best Practices
 
-This document outlines important security considerations when implementing and using DaoSign. Following these guidelines will help ensure your document signing processes remain secure and reliable.
-
-## Smart Contract Security
-
-### Audited Code
-
-The DaoSign contracts have undergone security review, but as with any blockchain application:
-
-- Always use the latest audited version of the contracts
-- Check for security announcements before significant integrations
-- Consider additional audits for critical implementations
-- Be aware that no code is entirely immune to vulnerabilities
-
-### Proxy Implementation
-
-DaoSign uses the UUPS (Universal Upgradeable Proxy Standard) pattern:
-
-- The proxy pattern allows for contract upgrades while preserving state
-- Upgrades can only be performed by the contract owner
-- Verify the ownership of proxy contracts before integrating
-- Monitor upgrade events to stay aware of implementation changes
-
-### Input Validation
-
-DaoSign performs extensive validation, but your application should:
-
-- Validate all inputs before sending transactions
-- Verify schema definitions match your intended document structure
-- Check signatory lists for correctness before creating attestations
-- Validate data types to avoid unexpected conversion issues
+Implementing DaoSign securely requires careful consideration of various factors. This document outlines best practices for maintaining security throughout the document lifecycle.
 
 ## Key Management
 
 ### Private Key Security
 
-The security of signatures depends entirely on private key security:
+Private keys are the foundation of security in DaoSign as they're used to create and verify signatures.
 
-- Use hardware wallets for high-value signing operations
-- Never store private keys in client-side code or localStorage
-- Consider multi-signature setups for organizational wallets
-- Implement proper key rotation procedures for long-term security
+**Best Practices:**
+- **Hardware Wallets**: Use hardware wallets for high-value operations
+- **Never Share**: Never share private keys or seed phrases
+- **Secure Storage**: Use proper key management solutions, not plaintext storage
+- **Minimize Exposure**: Limit private key usage to necessary operations
+- **Regular Rotation**: Consider rotating keys for long-term security
 
-### Organizational Controls
+### Multi-Signature Wallets
 
-For organizational use of DaoSign:
+For enhanced security, especially in organizational contexts:
 
-- Use multi-signature wallets for creating critical schemas
-- Implement approval workflows before signing important documents
-- Consider custody solutions designed for organizational use
-- Document key recovery procedures for business continuity
+**Best Practices:**
+- **Use Multisig**: Implement multi-signature wallets for critical operations
+- **Threshold Signatures**: Configure appropriate signature thresholds (e.g., 2-of-3 or 3-of-5)
+- **Distributed Control**: Assign keys to different stakeholders or departments
+- **Recovery Planning**: Establish clear recovery procedures for lost keys
 
-### Key Compromise Response
+## Schema Design Security
 
-If a private key is compromised:
+### Schema Definition
 
-1. Revoke any attestations created by that key (if revocable)
-2. Create new attestations with a secure key if needed
-3. Notify all affected parties
-4. Create a clear audit trail of the incident and response
+The schema forms the foundation of your documents. Secure schema design is essential:
 
-## Data Privacy
+**Best Practices:**
+- **Minimal Fields**: Only include necessary fields to minimize attack surface
+- **Correct Data Types**: Use appropriate data types for each field
+- **Field Validation**: Define validation requirements for each field
+- **Privacy Considerations**: Avoid storing sensitive data directly in fields
+- **Expiration Settings**: Configure appropriate expiration periods for time-sensitive schemas
 
-### On-Chain Data Considerations
+### Signatory Policies
 
-Remember that blockchain data is public:
+Signatory policies control who can sign attestations:
 
-- Never put sensitive personal data directly on-chain
-- Use hashing or encryption for sensitive information
-- Consider legal compliance (GDPR, CCPA, etc.) when designing schemas
-- Be mindful of metadata that could leak sensitive information
+**Best Practices:**
+- **Least Privilege**: Grant signing privileges only to necessary parties
+- **Role-Based Policies**: Define policies based on roles rather than specific addresses
+- **Defense in Depth**: Use multiple signatory requirements for critical documents
+- **Policy Testing**: Thoroughly test policies before deployment
 
-### Hash-and-Store Pattern
+## Attestation Security
 
-For sensitive documents:
+### Data Validation
 
-1. Store the complete document off-chain in a secure system
-2. Hash the document content with a secure algorithm (SHA-256)
-3. Store only the hash on-chain in the attestation
-4. Implement secure off-chain storage with access controls
+Ensuring data integrity in attestations:
 
-```javascript
-// Example of hash-and-store pattern
-async function createSecureAttestation(document, schema) {
-  // Hash the sensitive document
-  const documentHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(document));
-  const hashHex = Array.from(new Uint8Array(documentHash))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-  
-  // Store document off-chain with access controls
-  const documentId = await secureStorage.store(document, {
-    access_control: getAccessControlList()
-  });
-  
-  // Create attestation with hash and reference
-  const attestation = {
-    schema_id: schema.id,
-    attestation_result: [
-      {
-        attestation_result_type: "string",
-        name: "Document Title",
-        value: document.title
-      },
-      {
-        attestation_result_type: "bytes32",
-        name: "Document Hash",
-        value: `0x${hashHex}`
-      },
-      {
-        attestation_result_type: "string",
-        name: "Document Reference",
-        value: documentId
-      }
-    ],
-    recipient: document.recipientAddress,
-    signatories: document.signatoryAddresses
-  };
-  
-  return attestation;
-}
-```
+**Best Practices:**
+- **Input Validation**: Validate all data before creating attestations
+- **Schema Compliance**: Ensure all fields match the schema requirements
+- **Consistent Formats**: Use standardized formats for dates, addresses, etc.
+- **Sanitize Inputs**: Remove any potentially harmful data
 
-### Encrypted Fields
+### Signature Process
 
-For fields that should be visible only to authorized parties:
+Secure signature processes protect against unauthorized approvals:
 
-1. Encrypt the sensitive data using the recipients' public keys
-2. Store the encrypted data on-chain
-3. Allow decryption only by authorized parties with the correct private keys
+**Best Practices:**
+- **Clear Intent**: Ensure signatories understand what they're signing
+- **Verification Steps**: Implement explicit verification before signing
+- **Signature Confirmation**: Provide clear confirmation of signature success
+- **Metadata Capture**: Record relevant metadata (time, device, location) with signatures
 
-```javascript
-// Example of encrypted field implementation
-async function encryptField(value, recipientPublicKeys) {
-  // Create a new random symmetric key
-  const symmetricKey = await generateRandomSymmetricKey();
-  
-  // Encrypt the value with the symmetric key
-  const encryptedValue = await encryptWithSymmetricKey(value, symmetricKey);
-  
-  // Encrypt the symmetric key with each recipient's public key
-  const encryptedKeys = await Promise.all(
-    recipientPublicKeys.map(async (publicKey) => {
-      return {
-        recipient: publicKey.id,
-        encryptedKey: await encryptWithPublicKey(symmetricKey, publicKey.key)
-      };
-    })
-  );
-  
-  // Return the encrypted data structure
-  return {
-    encryptedValue,
-    encryptedKeys
-  };
-}
-```
+## Revocation Management
 
-## Signature Verification
+### Controlled Revocation
 
-### Signature Validation
+Proper revocation controls prevent abuse:
 
-Always perform thorough signature validation:
+**Best Practices:**
+- **Limited Authority**: Restrict revocation to authorized parties
+- **Revocation Reasons**: Implement structured reason codes for revocations
+- **Revocation Notifications**: Notify all affected parties of revocations
+- **Audit Trail**: Maintain a clear audit trail of revocation events
 
-- Verify the cryptographic integrity of signatures
-- Confirm the signatory was authorized to sign
-- Check that the attestation was not revoked
-- Verify the attestation matches the expected schema
+### Expiration Handling
 
-```javascript
-// Example signature verification
-async function verifySignature(attestationId, signature, signerAddress) {
-  // Create the expected message hash
-  const messageHash = ethers.utils.solidityKeccak256(
-    ['uint256'],
-    [attestationId]
-  );
-  
-  // Recover the signer's address from the signature
-  const messageHashBytes = ethers.utils.arrayify(messageHash);
-  const recoveredAddress = ethers.utils.verifyMessage(messageHashBytes, signature);
-  
-  // Compare with the claimed signer
-  if (recoveredAddress.toLowerCase() !== signerAddress.toLowerCase()) {
-    throw new Error('Invalid signature: signer mismatch');
-  }
-  
-  // Check if attestation is revoked
-  const attestation = await daoSign.getAttestation(attestationId);
-  if (attestation.is_revoked) {
-    throw new Error('Attestation has been revoked');
-  }
-  
-  return true;
-}
-```
+Managing document expiration securely:
 
-### Timestamp Verification
-
-Consider that blockchain timestamps have limitations:
-
-- Block timestamps can vary slightly from real time
-- Miners have some flexibility in setting timestamps
-- For time-critical operations, consider using additional timestamp oracles
-- Always allow reasonable time buffers for expiration checks
+**Best Practices:**
+- **Clear Expiration**: Make expiration dates explicit to all parties
+- **Renewal Process**: Establish a clear process for renewal of expired documents
+- **Expired Document Handling**: Define how expired documents should be treated
+- **Automatic Notifications**: Set up notifications before expiration
 
 ## Integration Security
 
-### Frontend Security
+### Client Applications
 
-When building user interfaces for DaoSign:
+Secure integration in client applications:
 
-- Implement proper input validation and sanitization
-- Use Content Security Policy (CSP) to prevent injection attacks
-- Implement proper authentication for user actions
-- Clearly display what users are signing before requesting signatures
-- Add confirmation steps for high-value or irreversible operations
+**Best Practices:**
+- **Library Validation**: Use validated and up-to-date client libraries
+- **Secure Connections**: Implement HTTPS for all API connections
+- **Error Handling**: Implement proper error handling without revealing sensitive information
+- **Rate Limiting**: Implement rate limiting to prevent abuse
+- **Event Monitoring**: Monitor events for unexpected activities
 
-### Backend Integration
+### Smart Contract Interaction
 
-For server-side integrations:
+Secure interaction with DaoSign contracts:
 
-- Use secure key management systems (KMS, HSM) for any server-side signing
-- Implement rate limiting to prevent abuse
-- Log all signing operations for audit purposes
-- Implement role-based access control for signing operations
-- Consider using secure enclaves for cryptographic operations
+**Best Practices:**
+- **Gas Limits**: Set appropriate gas limits for transactions
+- **Transaction Monitoring**: Monitor transactions for completion and success
+- **Nonce Management**: Implement proper nonce management for transactions
+- **Revert Handling**: Handle transaction reverts gracefully
 
-### Wallet Connection Security
+## Privacy Considerations
 
-When connecting to user wallets:
+### On-Chain Data
 
-- Use established wallet connection libraries (e.g., Web3Modal, WalletConnect)
-- Always display a clear message about what the user is signing
-- Verify the connected address matches the expected signer
-- Implement session timeouts for wallet connections
-- Include transaction details in signature requests
+Manage on-chain data with privacy in mind:
 
-## Transaction Security
+**Best Practices:**
+- **Minimal On-Chain Data**: Store only necessary data on-chain
+- **Hash-Based References**: Use hashes to reference off-chain sensitive data
+- **Avoid PII**: Never store personally identifiable information directly on-chain
+- **Encrypted Fields**: Consider encrypting sensitive fields before storing
 
-### Gas Considerations
+### Off-Chain Storage
 
-Be aware of gas-related security considerations:
+Secure complementary off-chain storage:
 
-- Set appropriate gas limits to prevent transaction failures
-- Be prepared for gas price fluctuations
-- Implement retry mechanisms with increasing gas prices for critical transactions
-- Consider using gas price oracles for optimal pricing
+**Best Practices:**
+- **Encrypted Storage**: Encrypt sensitive off-chain data
+- **Access Controls**: Implement strict access controls for off-chain data
+- **Data Mapping**: Maintain secure mapping between on-chain and off-chain data
+- **Backup Procedures**: Establish regular backup procedures for off-chain data
 
-### Front-Running Protection
+## Audit and Compliance
 
-Be aware of potential front-running attacks:
+### Audit Trails
 
-- Critical operations may be vulnerable to transaction ordering manipulation
-- Consider using commit-reveal patterns for sensitive operations
-- Implement gas price strategies that reduce front-running risk
-- Be aware that revocation operations could potentially be front-run
+Maintain comprehensive audit trails:
 
-## Monitoring and Response
+**Best Practices:**
+- **Event Logging**: Log all significant events (creation, signing, revocation)
+- **Tamper-Proof Logs**: Ensure logs cannot be modified
+- **Access Logging**: Track who accessed documents and when
+- **Regular Audits**: Conduct regular security audits of your implementation
 
-### Event Monitoring
+### Regulatory Compliance
 
-Set up monitoring for key contract events:
+Ensure compliance with applicable regulations:
 
-```javascript
-// Example monitoring setup
-function setupEventMonitoring(daoSignContract, alertSystem) {
-  // Monitor for schema creation
-  daoSignContract.on('SchemaCreated', (schemaId, event) => {
-    logEvent('Schema created', { schemaId });
-  });
-  
-  // Monitor for attestation creation
-  daoSignContract.on('AttestationCreated', (attestationId, event) => {
-    logEvent('Attestation created', { attestationId });
-  });
-  
-  // Monitor for revocations (critical to track)
-  daoSignContract.on('Revoked', (attestationId, event) => {
-    logEvent('Attestation revoked', { attestationId });
-    alertSystem.sendAlert('REVOCATION', `Attestation ${attestationId} has been revoked`);
-  });
-  
-  // Monitor for contract upgrades
-  daoSignContract.on('ContractUpgraded', (newVersion, timestamp, event) => {
-    logEvent('Contract upgraded', { newVersion, timestamp });
-    alertSystem.sendAlert('UPGRADE', `Contract upgraded to version ${newVersion}`);
-  });
-}
-```
+**Best Practices:**
+- **Jurisdiction Awareness**: Understand the regulations in all relevant jurisdictions
+- **eSignature Laws**: Ensure compliance with electronic signature laws (ESIGN, eIDAS, etc.)
+- **Data Protection**: Follow data protection regulations (GDPR, CCPA, etc.)
+- **Record Retention**: Implement appropriate record retention policies
 
-### Security Incident Response
+## Deployment Security
 
-Develop a plan for responding to security incidents:
+### Contract Deployment
 
-1. **Detection**: Set up monitoring and alerting for suspicious activities
-2. **Containment**: Have procedures to limit damage (e.g., revoking compromised attestations)
-3. **Eradication**: Address the root cause of security issues
-4. **Recovery**: Restore normal operations after an incident
-5. **Lessons Learned**: Update procedures based on incident findings
+Secure deployment of DaoSign contracts:
 
-### Regular Auditing
+**Best Practices:**
+- **Audited Code**: Use audited contract code for production
+- **Test Networks**: Test thoroughly on test networks before mainnet deployment
+- **Upgradeability Considerations**: Understand the security implications of upgradeability
+- **Owner Controls**: Implement secure processes for contract ownership
 
-Implement regular security audits:
+### User Onboarding
 
-- Review access controls and permissions
-- Check for unused or outdated schemas
-- Verify all integrations are using current contract versions
-- Test revocation procedures regularly
-- Perform penetration testing on your integration
+Secure user onboarding processes:
 
-## Compliance Considerations
+**Best Practices:**
+- **Identity Verification**: Implement appropriate identity verification for signatories
+- **Role Assignment**: Securely assign roles and permissions
+- **Training**: Provide security training for users
+- **Clear Documentation**: Document security features and responsibilities
 
-### Legal Requirements
+## Incident Response
 
-Consider legal and regulatory requirements:
+### Security Incident Handling
 
-- Ensure your implementation meets e-signature legal requirements in your jurisdiction
-- Consider data protection regulations (GDPR, CCPA, etc.)
-- Implement appropriate data retention and deletion policies
-- Document compliance measures for audit purposes
+Prepare for potential security incidents:
 
-### Industry-Specific Compliance
+**Best Practices:**
+- **Incident Response Plan**: Develop a plan for responding to security incidents
+- **Key Compromise Procedures**: Define procedures for suspected key compromise
+- **Communication Plan**: Establish clear communication channels for incidents
+- **Regular Drills**: Conduct regular security incident drills
 
-Different industries have specific compliance requirements:
+### Recovery Procedures
 
-- **Healthcare**: HIPAA compliance for patient data
-- **Finance**: KYC/AML regulations, financial record-keeping requirements
-- **Government**: Additional security requirements for government contracts
-- **Education**: FERPA compliance for student records
+Establish recovery procedures:
 
-## Security Checklist
+**Best Practices:**
+- **Backup Procedures**: Maintain regular backups of all critical data
+- **Key Recovery**: Document key recovery processes
+- **Service Continuity**: Plan for maintaining service during incidents
+- **Post-Incident Analysis**: Conduct thorough analysis after any incident
 
-Use this checklist when implementing DaoSign:
+## Implementation Checklist
 
-### Smart Contract Implementation
-- [ ] Verify contract addresses match audited versions
-- [ ] Check contract ownership and upgrade rights
-- [ ] Monitor for contract upgrade events
-- [ ] Use latest stable contract versions
+Use this checklist to ensure your DaoSign implementation follows security best practices:
 
-### Key Management
-- [ ] Implement secure key storage for all signing operations
-- [ ] Use hardware wallets for high-value operations
-- [ ] Document key recovery procedures
-- [ ] Implement appropriate key access controls
+- [ ] Key management procedures established
+- [ ] Schema designs reviewed for security
+- [ ] Input validation implemented for all attestation data
+- [ ] Signatory policies tested thoroughly
+- [ ] Revocation controls properly configured
+- [ ] Privacy considerations addressed for on-chain and off-chain data
+- [ ] Audit trails and monitoring in place
+- [ ] Regulatory compliance requirements identified and met
+- [ ] Secure deployment procedures followed
+- [ ] Incident response plan developed
 
-### Data Privacy
-- [ ] Review all schema fields for sensitive data
-- [ ] Implement off-chain storage for sensitive documents
-- [ ] Use hashing or encryption for private information
-- [ ] Document data handling procedures
-
-### Integration Security
-- [ ] Implement proper input validation
-- [ ] Add clear signing prompts for users
-- [ ] Set up monitoring for critical events
-- [ ] Test security of all integration points
-
-### Compliance
-- [ ] Verify e-signature legal compliance
-- [ ] Implement appropriate data retention policies
-- [ ] Document compliance measures
-- [ ] Review industry-specific requirements
-
-## Resources
+## Additional Resources
 
 For more information on blockchain security best practices:
 
-- [OWASP Blockchain Security Guidelines](https://owasp.org/www-project-blockchain-security-framework/)
+- [OWASP Blockchain Security Framework](https://owasp.org/www-project-blockchain-security-framework/)
+- [NIST Blockchain Technology Overview](https://nvlpubs.nist.gov/nistpubs/ir/2018/NIST.IR.8202.pdf)
 - [ConsenSys Smart Contract Best Practices](https://consensys.github.io/smart-contract-best-practices/)
-- [Ethereum Smart Contract Security Guidelines](https://ethereum.org/en/developers/docs/smart-contracts/security/)
-- [NIST Digital Signature Standards](https://csrc.nist.gov/publications/detail/fips/186/5/final)
+- [Electronic Signature Laws by Region](https://www.docusign.com/how-it-works/legality/global)

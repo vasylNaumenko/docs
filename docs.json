@@ -26,8 +26,7 @@
             "pages": [
               "core-concepts/schemas",
               "core-concepts/attestations",
-              "core-concepts/signatures",
-              "core-concepts/tokens"
+              "core-concepts/signatures"
             ]
           },
           {
@@ -63,7 +62,6 @@
             "group": "Smart Contracts",
             "pages": [
               "technical/contracts/daosign",
-              "technical/contracts/daosign-v2",
               "technical/contracts/tokens"
             ]
           },

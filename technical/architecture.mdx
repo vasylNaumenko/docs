@@ -24,8 +24,6 @@ graph TD
     
     subgraph "Core Contracts"
         DaoSign[DaoSign.sol]
-        DaoSignV2[DaoSignV2.sol]
-        DaoSign -->|Upgrades to| DaoSignV2
     end
     
     subgraph "Interfaces"
@@ -65,14 +63,8 @@ The main contract that implements the core functionality:
 - Creation and management of attestations
 - Verification of signatures and agreements
 - Management of NFT tokens for attestations
-
-### DaoSignV2.sol
-
-An upgraded version of the core contract that adds:
-
-- Version tracking
-- Enhanced functionality (as needed)
-- Backward compatibility with DaoSign.sol
+- Signature policy verification
+- Revocation management
 
 ## Data Structures
 

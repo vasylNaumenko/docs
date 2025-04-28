@@ -77,8 +77,14 @@ const ndaSchema = {
   signatory_policy: [] // Empty means no special requirements for signers
 };
 
+// Sign the schema creation request
+const signature = await daosign.signSchema(ndaSchema);
+
 // Create the schema on blockchain
-const schemaId = await daosign.createSchema(ndaSchema);
+const schemaId = await daosign.createSchema({
+  ...ndaSchema,
+  signature
+});
 console.log(`Created schema with ID: ${schemaId}`);
 ```
 
@@ -86,7 +92,7 @@ console.log(`Created schema with ID: ${schemaId}`);
 
 ```javascript
 // Create a document instance from the schema
-const attestation = {
+const ndaData = {
   schema_id: schemaId,
   attestation_result: [
     {
@@ -110,21 +116,52 @@ const attestation = {
       value: "All product designs, customer lists, and financial data"
     }
   ],
-  recipient: "0x1234...", // Address of recipient
-  signatories: ["0x1234...", "0x5678..."] // Addresses required to sign
+  recipient: "0xRecipientAddress...", // Address of recipient
+  signatories: [
+    "0xCompanyAddress...", 
+    "0xConsultantAddress..."
+  ] // Addresses required to sign
 };
 
+// Sign the attestation creation request
+const attestationSignature = await daosign.signAttestation(ndaData);
+
 // Create the attestation on blockchain
-const attestationId = await daosign.createAttestation(attestation);
+const attestationId = await daosign.createAttestation({
+  ...ndaData,
+  signature: attestationSignature
+});
 console.log(`Created attestation with ID: ${attestationId}`);
 ```
 
 ### 4. Sign the Attestation
 
+#### First Signatory (Company)
+
 ```javascript
-// Each signatory signs the attestation (each runs this code)
-await daosign.signAttestation(attestationId);
-console.log(`Attestation ${attestationId} signed`);
+// Connect with company wallet
+await daosign.connect({address: "0xCompanyAddress..."});
+
+// Generate signature
+const signature = await daosign.createSignatureForAttestation(attestationId);
+
+// Submit signature to blockchain
+await daosign.signAttestation(attestationId, signature);
+console.log(`Attestation ${attestationId} signed by company`);
+```
+
+#### Second Signatory (Consultant)
+
+```javascript
+// Connect with consultant wallet
+await daosign.connect({address: "0xConsultantAddress..."});
+
+// Generate signature
+const signature = await daosign.createSignatureForAttestation(attestationId);
+
+// Submit signature to blockchain
+await daosign.signAttestation(attestationId, signature);
+console.log(`Attestation ${attestationId} signed by consultant`);
 
 // After all signatories sign, the Proof of Agreement is automatically generated
 ```
@@ -132,11 +169,153 @@ console.log(`Attestation ${attestationId} signed`);
 ### 5. Verify the Agreement
 
 ```javascript
-// Get proof of agreement
-const agreement = await daosign.getProofOfAgreement(attestationId);
-console.log(`Agreement verified with ${agreement.signatures.length} signatures`);
+// Get attestation details
+const attestation = await daosign.getAttestation(attestationId);
+console.log('Attestation data:', attestation);
 
-// If the schema was configured for NFTs, an NFT representing the agreement is minted
+// Get all signatures
+const signatures = await daosign.getProofsOfSignature(attestationId);
+console.log(`Found ${signatures.length} signatures:`, signatures);
+
+// Get proof of agreement
+const agreements = await daosign.getProofsOfAgreement(attestationId);
+if (agreements.length > 0) {
+  console.log('Agreement is complete');
+} else {
+  console.log('Agreement is not yet complete');
+}
+
+// Check NFT status if schema was configured for NFTs
+const schema = await daosign.getSchema(attestation.schema_id);
+if (schema.metadata.is_nft) {
+  const nftCollection = await daosign.getNftCollection(attestation.schema_id);
+  const owner = await nftCollection.ownerOf(attestationId);
+  console.log(`NFT for attestation ${attestationId} is owned by ${owner}`);
+}
+```
+
+### 6. Revoking an Attestation (if needed)
+
+```javascript
+// Only the creator can revoke
+await daosign.connect({address: attestation.creator});
+
+// Generate revocation signature
+const revokeSignature = await daosign.createRevocationSignature(attestationId);
+
+// Revoke the attestation
+await daosign.revokeAttestation(attestationId, revokeSignature);
+console.log(`Attestation ${attestationId} has been revoked`);
+```
+
+## Advanced Example: Schema with Signatory Policy
+
+This example shows how to create a schema that requires signatories to have previously received certain attestations:
+
+```javascript
+// Define a schema that requires signatories to have verified identities
+const loanAgreementSchema = {
+  metadata: {
+    name: "Loan Agreement",
+    description: "Peer-to-peer loan contract",
+    attestation_type: "agreement",
+    is_public: true,
+    is_revokable: false,
+    expire_in: 0, // Never expires
+    is_nft: true,
+    nft_name: "Loan Contract",
+    nft_symbol: "LOAN"
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Lender Name" },
+    { definition_type: "string", definition_name: "Borrower Name" },
+    { definition_type: "uint256", definition_name: "Loan Amount" },
+    { definition_type: "uint256", definition_name: "Interest Rate" },
+    { definition_type: "uint256", definition_name: "Term in Months" },
+    { definition_type: "string", definition_name: "Payment Terms" }
+  ],
+  signatory_policy: [
+    {
+      operator: "0x01", // AND operator
+      signatory_description: "Verified Identity Requirement",
+      required_schema_id: [1] // Assuming schema ID 1 is for "Identity Verification"
+    }
+  ]
+};
+
+// Sign and create the schema
+const signature = await daosign.signSchema(loanAgreementSchema);
+const loanSchemaId = await daosign.createSchema({
+  ...loanAgreementSchema,
+  signature
+});
+console.log(`Created loan agreement schema with ID: ${loanSchemaId}`);
+```
+
+## Working with Data Types
+
+DaoSign supports various data types in schemas and attestations. Here's how to use them:
+
+```javascript
+// Schema with different data types
+const multiTypeSchema = {
+  metadata: {
+    name: "Multi-Type Document",
+    description: "Example of different data types",
+    attestation_type: "example",
+    is_public: true,
+    is_revokable: true,
+    expire_in: 0
+  },
+  schema_definition: [
+    { definition_type: "string", definition_name: "Text Field" },
+    { definition_type: "boolean", definition_name: "Yes/No Field" },
+    { definition_type: "uint256", definition_name: "Number Field" },
+    { definition_type: "bytes", definition_name: "Binary Data Field" },
+    { definition_type: "bytes32", definition_name: "Fixed Binary Field" },
+    { definition_type: "address", definition_name: "Ethereum Address Field" }
+  ],
+  signatory_policy: []
+};
+
+// Creating an attestation with these data types
+const attestation = {
+  schema_id: schemaId,
+  attestation_result: [
+    {
+      attestation_result_type: "string",
+      name: "Text Field",
+      value: "This is a text value"
+    },
+    {
+      attestation_result_type: "boolean",
+      name: "Yes/No Field",
+      value: true
+    },
+    {
+      attestation_result_type: "uint256",
+      name: "Number Field",
+      value: 12345
+    },
+    {
+      attestation_result_type: "bytes",
+      name: "Binary Data Field",
+      value: "0x1a2b3c4d"
+    },
+    {
+      attestation_result_type: "bytes32",
+      name: "Fixed Binary Field",
+      value: "0x1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d1a2b3c4d"
+    },
+    {
+      attestation_result_type: "address",
+      name: "Ethereum Address Field",
+      value: "0x1234567890123456789012345678901234567890"
+    }
+  ],
+  recipient: "0xRecipientAddress...",
+  signatories: ["0xSignatoryAddress..."]
+};
 ```
 
 ## What's Next?
@@ -144,5 +323,7 @@ console.log(`Agreement verified with ${agreement.signatures.length} signatures`)
 - Explore [Core Concepts](/core-concepts/schemas) to understand DaoSign's architecture
 - Check out [Tutorials](/tutorials/creating-schema) for more detailed examples
 - See [Technical Reference](/technical/architecture) for development details
+- Learn about [Signatory Policies](/core-concepts/signatures) for advanced use cases
+- Understand [NFT Integration](/technical/contracts/tokens) for tokenized attestations
 
 Now you're ready to start using DaoSign for your document signing needs!
